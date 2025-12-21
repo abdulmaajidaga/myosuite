@@ -4,13 +4,21 @@ import numpy as np
 import pandas as pd
 import skvideo.io
 from tqdm import tqdm
+import sys # <--- Added
 
 # ========================================
 # CONFIGURATION - Edit these paths
 # ========================================
-MODEL_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/model/myo_sim/arm/myoarm.xml'  # Path to MuJoCo model XML
-MOT_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/S5_12_1.mot'  # Path to input MOT file
-OUTPUT_VIDEO = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/S5_12_1.mp4'  # Path to output video file
+MODEL_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/model/myo_sim/arm/myoarm.xml'
+MOT_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/01_12_1.mot'
+OUTPUT_VIDEO = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/01_12_1.mp4'
+
+# <--- ADDED: Override defaults if running from batch script
+if len(sys.argv) > 1:
+    MODEL_PATH = sys.argv[1]
+    MOT_PATH = sys.argv[2]
+    OUTPUT_VIDEO = sys.argv[3]
+# ========================================
 
 # Camera settings (adjust as needed)
 CAMERA_AZIMUTH = 0
