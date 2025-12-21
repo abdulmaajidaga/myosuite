@@ -3,15 +3,22 @@ from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import sys  # <--- Added
 
 # ========================================
 # CONFIGURATION - Edit these paths
 # ========================================
-INPUT_CSV = "/home/abdul/Desktop/myosuite/custom_workspace/data/kinematic/Stroke/S5_12_1.csv"  # Change this to your input CSV file path
-OUTPUT_TRC = "/home/abdul/Desktop/myosuite/custom_workspace/IK/output/S5_12_1.trc"  # Change this to your desired output TRC file path
-DATA_RATE = 200.0  # Sampling rate in Hz
-VISUALIZE = False  # Set to True to show filtering comparison plot
-SAVE_PLOT = None  # Set to a file path (e.g., "filter_comparison.png") to save the plot
+# INPUT_CSV = "/home/abdul/Desktop/myosuite/custom_workspace/data/kinematic/Stroke/S1_12_1.csv"
+INPUT_CSV = "/home/abdul/Desktop/myosuite/custom_workspace/data/kinematic/Healthy/01_12_1.csv"
+OUTPUT_TRC = "/home/abdul/Desktop/myosuite/custom_workspace/IK/output/01_12_1.trc"
+DATA_RATE = 200.0
+VISUALIZE = False
+SAVE_PLOT = None
+
+# <--- ADDED: Override defaults if running from batch script
+if len(sys.argv) > 1:
+    INPUT_CSV = sys.argv[1]
+    OUTPUT_TRC = sys.argv[2]
 # ========================================
 
 def process_kinematic_data(filepath):

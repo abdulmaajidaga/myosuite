@@ -1,12 +1,8 @@
-# import sys
-# import os
-# # This adds the root of the cloned repo to Python's search path
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
- 
-# do this if myosuite is not found
-#cd /home/abdul/Documents/myosuite/
-#pip install -e .
-
+"""
+===============================================================================
+FILE: convert_trc2mot.py
+===============================================================================
+"""
 import numpy as np
 import myosuite
 from myosuite.physics import sim_scene
@@ -14,149 +10,163 @@ from myosuite.utils.trc_parser import TRCParser
 import os
 import collections
 import mujoco
-import time
+import sys
 from scipy.spatial.transform import Rotation
 
-# ========================================
-# CONFIGURATION - Edit these paths
-# ========================================
-MODEL_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/model/myo_sim/arm/myoarm.xml'  # Path to MuJoCo model XML
-TRC_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/S5_12_1.trc'  # Path to input TRC file
-OUTPUT_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/S5_12_1.mot'  # Path to output MOT file (leave as None if only visualizing)
-VISUALIZE = False  # Set to True to show real-time alignment visualization instead of solving IK
-# ========================================
+# --- HELPER IMPORTS ---
+import interactive_alignment
+import auto_scaler
+import trc_data_scaler
+# ----------------------
 
-IKResult = collections.namedtuple(
-    'IKResult', ['qpos', 'err_norm', 'steps', 'success'])
+# CONFIG
+MODEL_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/model/myo_sim/arm/myoarm.xml'
+TRC_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/01_12_1.trc'
+OUTPUT_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/01_12_1.mot'
+REFERENCE_MOT_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/S5_12_1.mot'
 
-def solve_ik_multi_site(sim, site_targets, tol=1e-5, max_steps=500, regularization_strength=0.01):
-    model = sim.model.ptr
-    data = sim.data.ptr
-    initial_qpos = data.qpos.copy()
-    site_ids, target_pos_vec = [], []
-    for name, pos in site_targets.items():
-        try:
-            sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
-            if sid == -1: raise KeyError
+INTERACTIVE_ALIGN = True # <--- KEEP FALSE FOR BATCH
+SCALE_DATA = True
+LOCK_SHOULDER = True
+LOCKED_JOINT_KEYWORDS = ["shoulder", "clavicle", "scapula"]
+
+if len(sys.argv) > 1:
+    MODEL_PATH = sys.argv[1]
+    TRC_PATH = sys.argv[2]
+    OUTPUT_PATH = sys.argv[3]
+
+IKResult = collections.namedtuple('IKResult', ['qpos', 'err_norm', 'steps', 'success'])
+
+def load_reference_pose_from_mot(sim, mot_path):
+    if not os.path.exists(mot_path):
+        return False
+    try:
+        with open(mot_path, 'r') as f:
+            lines = f.readlines()
+        header_end_idx = 0
+        for i, line in enumerate(lines):
+            if line.strip() == 'endheader':
+                header_end_idx = i
+                break
+        col_names = lines[header_end_idx + 1].strip().split('\t')
+        first_frame_vals = lines[header_end_idx + 2].strip().split('\t')
+        
+        raw_model = sim.model.ptr if hasattr(sim.model, 'ptr') else sim.model
+        raw_data = sim.data.ptr if hasattr(sim.data, 'ptr') else sim.data
+        
+        for i, name in enumerate(col_names):
+            if name == 'time': continue
+            joint_id = mujoco.mj_name2id(raw_model, mujoco.mjtObj.mjOBJ_JOINT, name)
+            if joint_id != -1:
+                raw_data.qpos[raw_model.jnt_qposadr[joint_id]] = float(first_frame_vals[i])
+        sim.forward()
+        return True
+    except: return False
+
+def apply_hard_lock(sim, keywords):
+    raw_model = sim.model.ptr if hasattr(sim.model, 'ptr') else sim.model
+    raw_data = sim.data.ptr if hasattr(sim.data, 'ptr') else sim.data
+    raw_model.opt.gravity[:] = 0.0
+    locked_dofs = []
+    for i in range(raw_model.njnt):
+        name = mujoco.mj_id2name(raw_model, mujoco.mjtObj.mjOBJ_JOINT, i)
+        if not name: continue
+        if any(k in name.lower() for k in keywords):
+            qpos_adr = raw_model.jnt_qposadr[i]
+            val = raw_data.qpos[qpos_adr]
+            raw_model.jnt_range[i] = [val, val]
+            raw_model.dof_damping[raw_model.jnt_dofadr[i]] = 1000.0
+            locked_dofs.append(raw_model.jnt_dofadr[i])
+    sim.forward()
+    return np.array(locked_dofs, dtype=int)
+
+def solve_ik_multi_site(sim, targets, locked_dofs=None, max_steps=50):
+    model = sim.model.ptr if hasattr(sim.model, 'ptr') else sim.model
+    data = sim.data.ptr if hasattr(sim.data, 'ptr') else sim.data
+    site_ids, target_vec = [], []
+    for n, p in targets.items():
+        sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, n)
+        if sid != -1:
             site_ids.append(sid)
-            target_pos_vec.append(pos)
-        except KeyError:
-            return None
-    target_pos_vec = np.concatenate(target_pos_vec)
-    for i in range(max_steps):
-        current_pos = np.concatenate([data.site_xpos[sid] for sid in site_ids])
-        jac_stack = np.zeros((3 * len(site_ids), model.nv))
-        for idx, sid in enumerate(site_ids):
-            jacp = np.zeros((3, model.nv))
-            mujoco.mj_jacSite(model, data, jacp, None, sid)
-            jac_stack[3*idx:3*idx+3, :] = jacp
-        pos_error = target_pos_vec - current_pos
-        err_norm = np.linalg.norm(pos_error)
-        if err_norm < tol:
-            return IKResult(qpos=data.qpos.copy(), err_norm=err_norm, steps=i, success=True)
-        hess = jac_stack.T @ jac_stack + np.eye(model.nv) * regularization_strength
-        dq = np.linalg.solve(hess, jac_stack.T @ pos_error)
-        mujoco.mj_integratePos(model, data.qpos, dq, 1.0)
+            target_vec.append(p)
+    if not site_ids: return IKResult(data.qpos.copy(), 999.0, 0, False)
+    target_vec = np.concatenate(target_vec)
+    nv = model.nv
+    
+    for step in range(max_steps):
+        curr = np.concatenate([data.site_xpos[sid] for sid in site_ids])
+        err = target_vec - curr
+        err_norm = np.linalg.norm(err)
+        if err_norm < 1e-3: return IKResult(data.qpos.copy(), err_norm, step, True)
+        
+        jac = np.zeros((3*len(site_ids), nv))
+        for i, sid in enumerate(site_ids):
+            mujoco.mj_jacSite(model, data, jac[3*i:3*i+3], None, sid)
+            
+        dq = np.linalg.solve(jac.T @ jac + np.eye(nv)*0.05, jac.T @ err)
+        if locked_dofs is not None and len(locked_dofs)>0: dq[locked_dofs] = 0
+        mujoco.mj_integratePos(model, data.qpos, np.clip(dq, -0.5, 0.5), 1.0)
         mujoco.mj_forward(model, data)
-    return IKResult(qpos=data.qpos.copy(), err_norm=err_norm, steps=max_steps, success=False)
-
-def visualize_alignment(sim, trajectories):
-    print("\nStarting Alignment Visualization...")
-    print("Red=Shoulder, Green=Elbow, Blue=Wrist")
-    viewer = mujoco.viewer.launch_passive(sim.model.ptr, sim.data.ptr)
-    colors = [[1, 0, 0, 0.7], [0, 1, 0, 0.7], [0, 0, 1, 0.7]]
-    marker_names = list(trajectories.keys())
-    for i in range(len(marker_names)):
-        mujoco.mjv_initGeom(viewer.user_scn.geoms[i], type=mujoco.mjtGeom.mjGEOM_SPHERE, size=[0.02, 0, 0], pos=np.zeros(3), mat=np.eye(3).flatten(), rgba=colors[i])
-    viewer.user_scn.ngeom = len(marker_names)
-    num_frames = len(trajectories[marker_names[0]])
-    while viewer.is_running():
-        for i in range(num_frames):
-            if not viewer.is_running(): break
-            for marker_idx, name in enumerate(marker_names):
-                viewer.user_scn.geoms[marker_idx].pos = trajectories[name][i]
-            viewer.sync()
-            time.sleep(1 / 100)
-    viewer.close()
+        
+    return IKResult(data.qpos.copy(), err_norm, max_steps, False)
 
 def main():
-    # Create output directory if needed
-    if OUTPUT_PATH:
-        os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-
-    sim_wrapper = sim_scene.SimScene.get_sim(MODEL_PATH)
-    sim = sim_wrapper.sim
-    print(f"✓ Model loaded from: {MODEL_PATH}")
+    if OUTPUT_PATH: os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+    sim = sim_scene.SimScene.get_sim(MODEL_PATH).sim
+    trc = TRCParser(TRC_PATH)
+    if SCALE_DATA: trc = trc_data_scaler.apply_retargeting(sim, trc)
     
-    trc_data = TRCParser(TRC_PATH)
-    marker_names = trc_data.get_marker_names()
-    print(f"✓ TRC file loaded from: {TRC_PATH}")
-
-    print("\nCalculating optimal alignment...")
-    model_s_pos = sim.data.site_xpos[sim.model.site('V_Shoulder').id].copy()
-    model_e_pos = sim.data.site_xpos[sim.model.site('V_Elbow').id].copy()
-    model_vec = model_e_pos - model_s_pos
-    mocap_s_pos_raw = trc_data.get_marker_data('V_Shoulder')[0] / 1000.0
-    mocap_e_pos_raw = trc_data.get_marker_data('V_Elbow')[0] / 1000.0
-    mocap_s_pos = np.array([mocap_s_pos_raw[0], -mocap_s_pos_raw[2], mocap_s_pos_raw[1]])
-    mocap_e_pos = np.array([mocap_e_pos_raw[0], -mocap_e_pos_raw[2], mocap_e_pos_raw[1]])
-    mocap_vec = mocap_e_pos - mocap_s_pos
-    rotation, _ = Rotation.align_vectors(a=[model_vec], b=[mocap_vec])
-    print("✓ Optimal rotation calculated.")
-
-    mocap_shoulder_origin = trc_data.get_marker_data('V_Shoulder')[0]
-    processed_trajectories = {}
-    for name in marker_names:
-        relative_pos_m = (trc_data.get_marker_data(name) - mocap_shoulder_origin) / 1000.0
-        processed_trajectories[name] = np.array([model_s_pos + rotation.apply([p[0], -p[2], p[1]]) for p in relative_pos_m])
-    print("✓ Mocap data aligned to model coordinate system.")
+    load_reference_pose_from_mot(sim, REFERENCE_MOT_PATH)
     
-    if VISUALIZE:
-        visualize_alignment(sim, processed_trajectories)
-        return
-
-    if not OUTPUT_PATH:
-        print("✗ ERROR: OUTPUT_PATH must be specified when not visualizing.")
-        return
-
-    print("\nStarting Inverse Kinematics solve...")
-    num_frames = trc_data.get_num_frames()
-    joint_pos_trajectory = []
-    all_joint_names = [sim.model.joint(i).name for i in range(sim.model.njnt)]
-
-    print("  > Solving first frame with increased iterations...")
-    first_frame_targets = {name: processed_trajectories[name][0] for name in marker_names}
-    ik_result = solve_ik_multi_site(sim, first_frame_targets, max_steps=1000)
+    locked_dofs = None
+    if LOCK_SHOULDER: locked_dofs = apply_hard_lock(sim, LOCKED_JOINT_KEYWORDS)
     
-    sim.data.qpos[:] = ik_result.qpos
-    sim.forward()
-    joint_pos_trajectory.append(ik_result.qpos)
-    print(f"  > Initial solve completed (Error: {ik_result.err_norm*1000:.2f} mm). Proceeding...")
+    # Auto Align (Static Frame 0)
+    sid_s = mujoco.mj_name2id(sim.model.ptr, mujoco.mjtObj.mjOBJ_SITE, 'V_Shoulder')
+    sid_e = mujoco.mj_name2id(sim.model.ptr, mujoco.mjtObj.mjOBJ_SITE, 'V_Elbow')
+    r_vec = sim.data.site_xpos[sid_e] - sim.data.site_xpos[sid_s]
+    
+    t_s = trc.get_marker_data('V_Shoulder')[0]/1000.0
+    t_e = trc.get_marker_data('V_Elbow')[0]/1000.0
+    t_vec = np.array([t_e[0], -t_e[2], t_e[1]]) - np.array([t_s[0], -t_s[2], t_s[1]])
+    
+    rot, _ = Rotation.align_vectors(a=[r_vec], b=[t_vec])
+    if INTERACTIVE_ALIGN: rot, _ = interactive_alignment.run_interactive_alignment(sim, trc, auto_rot=rot)
 
-    for i in range(1, num_frames):
-        target_pos_dict = {name: processed_trajectories[name][i] for name in marker_names}
-        ik_result = solve_ik_multi_site(sim, target_pos_dict)
-        joint_pos_trajectory.append(ik_result.qpos)
-        sim.data.qpos[:] = ik_result.qpos
-        sim.forward()
-        if i % 100 == 0 or i == num_frames - 1:
-            print(f"  > Solved frame {i+1}/{num_frames} (Error: {ik_result.err_norm*1000:.2f} mm)")
+    # Process
+    markers = trc.get_marker_names()
+    targets = []
+    ref_s_traj = trc.get_marker_data('V_Shoulder')
+    robot_s = sim.data.site_xpos[sid_s].copy()
+    
+    for i in range(trc.get_num_frames()):
+        frame_t = {}
+        for m in markers:
+            raw = trc.get_marker_data(m)[i]
+            rel = (raw - ref_s_traj[i]) / 1000.0
+            vec = np.array([rel[0], -rel[2], rel[1]])
+            frame_t[m] = robot_s + rot.apply(vec)
+        targets.append(frame_t)
 
-    print("✓ Inverse Kinematics solve completed.")
+    # Solve
+    qs = []
+    errs = 0
+    solve_ik_multi_site(sim, targets[0], locked_dofs, 500)
+    
+    for i, t in enumerate(targets):
+        res = solve_ik_multi_site(sim, t, locked_dofs, 50)
+        qs.append(res.qpos.copy())
+        errs += res.err_norm
+        
+    print(f"FINAL_MEAN_ERROR: {(errs/len(targets))*1000:.4f}") # <--- FIXED FORMAT
+    
+    # Save
+    names = [mujoco.mj_id2name(sim.model.ptr, mujoco.mjtObj.mjOBJ_JOINT, i) for i in range(sim.model.njnt)]
+    time = np.arange(len(qs)) / trc.get_data_rate()
+    with open(OUTPUT_PATH, 'w') as f:
+        f.write("dataset\nversion=1\nnRows={}\nnColumns={}\ninDegrees=no\nendheader\n".format(len(qs), len(names)+1))
+        f.write("time\t" + "\t".join(names) + "\n")
+        for i in range(len(qs)):
+            f.write(f"{time[i]:.6f}\t" + "\t".join([f"{x:.6f}" for x in qs[i]]) + "\n")
 
-    try:
-        qpos_trajectory = np.array(joint_pos_trajectory)
-        time = np.arange(num_frames) / trc_data.get_data_rate()
-        with open(OUTPUT_PATH, 'w') as f:
-            f.write(f"{os.path.basename(OUTPUT_PATH)}\nversion=1\n")
-            f.write(f"nRows={num_frames}\nnColumns={len(all_joint_names) + 1}\n")
-            f.write("inDegrees=no\nendheader\n")
-            f.write("time\t" + "\t".join(all_joint_names) + "\n")
-            for i in range(num_frames):
-                f.write(f"{time[i]:.8f}\t" + "\t".join([f"{q:.8f}" for q in qpos_trajectory[i]]) + "\n")
-        print(f"✓ Results successfully saved to: {OUTPUT_PATH}")
-    except Exception as e:
-        print(f"✗ ERROR: Failed to save MOT file: {e}")
-
-if __name__ == '__main__':
-    main()
+if __name__ == '__main__': main()

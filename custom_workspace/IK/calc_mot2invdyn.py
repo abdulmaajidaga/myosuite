@@ -12,6 +12,8 @@ import skvideo.io
 from PIL import Image, ImageDraw, ImageFont
 from copy import deepcopy
 
+# UNDERSTAND THIS PROPERLY!!!
+
 # =============================================================================
 # USER CONFIGURATION
 # =============================================================================
