@@ -10,8 +10,8 @@ import sys # <--- Added
 # CONFIGURATION - Edit these paths
 # ========================================
 MODEL_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/model/myo_sim/arm/myoarm.xml'
-MOT_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/01_12_1.mot'
-OUTPUT_VIDEO = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/01_12_1.mp4'
+MOT_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/gen_score_15.mot'
+OUTPUT_VIDEO = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/gen_score_15.mp4'
 
 # <--- ADDED: Override defaults if running from batch script
 if len(sys.argv) > 1:
