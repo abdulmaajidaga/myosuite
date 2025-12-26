@@ -25,9 +25,24 @@ custom_workspace/
 
 The IK pipeline converts raw motion capture data (CSV) into OpenSim/Mujoco compatible motion files (.mot) and renders videos.
 
-### How to Run
+### IK Scripts Description
 
-The main entry point is `IK/run.py`.
+The `IK/` directory contains several scripts for processing kinematic data, scaling models, and analyzing motions:
+
+*   **`run.py`**: The main entry point. It orchestrates the full pipeline: CSV -> TRC -> MOT -> MP4. It can run in single-file mode or batch mode.
+*   **`run_modular.py`**: A refactored, modular version of the IK pipeline that uses the `modular/` sub-package for cleaner logic separation.
+*   **`batch_processor.py`**: Contains the logic used by `run.py` to iterate through multiple files, ensuring specific reference files are processed first.
+*   **`convert_csv2trc.py`**: Converts raw motion capture CSV data (with multi-level headers) into OpenSim-compatible TRC marker files.
+*   **`convert_trc2mot.py`**: The core IK solver. It uses MuJoCo to find joint angles that best match the marker positions in the TRC file, producing a MOT file.
+*   **`convert_mot2video.py`**: Loads a MOT file and a MuJoCo model, then renders the motion to an MP4 video file.
+*   **`auto_scaler.py`**: Calculates subject-specific limb lengths from TRC data and automatically scales the MuJoCo model's bodies (humerus, ulna, etc.) to match the subject.
+*   **`trc_data_scaler.py`**: Scales the TRC marker data itself to match the dimensions of a specific MuJoCo model, useful for retargeting.
+*   **`calc_mot2invdyn.py`**: Performs Inverse Dynamics. It calculates the forces/torques required to produce the motion described in a MOT file.
+*   **`interactive_alignment.py`**: Provides a GUI (using MuJoCo viewer) to manually align the motion capture coordinate system with the MuJoCo model's frame.
+*   **`train_motion_model.py`**: Trains a statistical model (using PCA and Support Vector Regression) to generate new motions based on clinical scores (like FMA-UE).
+*   **`visualise_model.py`**: Visualizes the results of the motion model training, showing the PCA latent space and the regression paths between different clinical states.
+
+### How to Use the IK Pipeline
 
 ```bash
 cd custom_workspace/IK
