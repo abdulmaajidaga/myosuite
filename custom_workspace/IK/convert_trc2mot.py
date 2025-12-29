@@ -15,7 +15,6 @@ from scipy.spatial.transform import Rotation
 
 # --- HELPER IMPORTS ---
 import interactive_alignment
-import auto_scaler
 import trc_data_scaler
 # ----------------------
 
