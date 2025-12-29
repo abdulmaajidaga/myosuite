@@ -35,38 +35,30 @@ The `IK/` directory contains several scripts for processing kinematic data, scal
 *   **`convert_csv2trc.py`**: Converts raw motion capture CSV data (with multi-level headers) into OpenSim-compatible TRC marker files.
 *   **`convert_trc2mot.py`**: The core IK solver. It uses MuJoCo to find joint angles that best match the marker positions in the TRC file, producing a MOT file.
 *   **`convert_mot2video.py`**: Loads a MOT file and a MuJoCo model, then renders the motion to an MP4 video file.
-*   **`auto_scaler.py`**: Calculates subject-specific limb lengths from TRC data and automatically scales the MuJoCo model's bodies (humerus, ulna, etc.) to match the subject.
 *   **`trc_data_scaler.py`**: Scales the TRC marker data itself to match the dimensions of a specific MuJoCo model, useful for retargeting.
 *   **`calc_mot2invdyn.py`**: Performs Inverse Dynamics. It calculates the forces/torques required to produce the motion described in a MOT file.
 *   **`interactive_alignment.py`**: Provides a GUI (using MuJoCo viewer) to manually align the motion capture coordinate system with the MuJoCo model's frame.
 *   **`train_motion_model.py`**: Trains a statistical model (using PCA and Support Vector Regression) to generate new motions based on clinical scores (like FMA-UE).
-*   **`visualise_model.py`**: Visualizes the results of the motion model training, showing the PCA latent space and the regression paths between different clinical states.
+*   **`IK/visual/visualise_all.py`**: A unified dashboard that generates both static model quality checks (PCA variance, regression paths) and interactive 3D manifold comparisons (PCA vs t-SNE vs UMAP) to analyze patient clusters.
+*   **`IK/visual/visualise_similarity.py`**: Uses **Dynamic Time Warping (DTW)** to calculate the exact similarity between every pair of patient motions, generating a clustered heatmap to reveal subgroups with similar movement strategies.
+*   **`IK/visual/visualise_trajectories.py`**: Generates **temporal plots** (joint angles over time) and **spatial plots** (3D wrist paths), grouping patients by impairment level (Severe, Moderate, Healthy) to highlight qualitative differences.
+*   **`IK/visual/visualise_metrics.py`**: Calculates clinical scalar metrics (Range of Motion, Peak Velocity, Path Efficiency) and plots their correlation with FMA scores to quantify recovery trends.
+*   **`IK/visual/visualise_trc_manifolds.py`**: Applies PCA/t-SNE/UMAP directly to the **raw TRC marker data** (instead of calculated joint angles). Comparing this with `visualise_all.py` helps verify if the Inverse Kinematics process is preserving the underlying motion structure.
+*   **`IK/visual/visualise_csv_manifolds.py`**: Visualizes the **raw source CSV data** (MHH format) using the same manifold techniques. This is the earliest possible check to see if patient clustering exists in the original recording before any conversion or processing.
+*   **`IK/visual/generate_master_dashboard.py`**: Aggregates all the above visualizations (interactive plots and static images) into a single HTML file (`master_dashboard.html`) for a comprehensive overview of the entire dataset.
 
-### How to Use the IK Pipeline
+## Data Visualization
 
-```bash
-cd custom_workspace/IK
-python run.py
-```
+The visualization tools are located in `custom_workspace/IK/visual/`.
 
-### Configuration (`IK/run.py`)
+1.  **Raw Data**: `visualise_csv_manifolds.py` (Source CSV) & `visualise_trc_manifolds.py` (Markers).
+2.  **Processed Motion**: `visualise_all.py` (Joint Angles PCA/t-SNE/UMAP).
+3.  **Temporal & Spatial**: `visualise_trajectories.py` (Joint curves & 3D paths).
+4.  **Clinical Metrics**: `visualise_metrics.py` (ROM, Velocity correlations).
+5.  **Similarity**: `visualise_similarity.py` (Patient-to-patient correlation heatmap).
+6.  **Master Dashboard**: `generate_master_dashboard.py`.
 
-You can configure the pipeline by editing `IK/run.py`:
-
-*   **`RUN_BATCH_MODE`**:
-    *   `True`: Processes **all** CSV files in `data/kinematic/Stroke`.
-    *   `False`: Processes a **single** file (defined by `SINGLE_INPUT_CSV`).
-*   **`REF_FILE`**: `S5_12_1.csv` is often treated as a reference file and processed first in batch mode.
-
-### Pipeline Steps
-
-1.  **CSV to TRC** (`convert_csv2trc.py`): Converts raw marker data to TRC format.
-2.  **TRC to MOT** (`convert_trc2mot.py`): Solves Inverse Kinematics to generate joint angles (.mot).
-3.  **MOT to Video** (`convert_mot2video.py`): Renders the motion in the Mujoco simulation.
-
-### Modular Pipeline
-
-`IK/run_modular.py` is a refactored version of the pipeline that uses the `modular/` package for cleaner code organization. It performs similar steps but is structured for better maintainability.
+The final output is: **`custom_workspace/IK/visual/master_dashboard.html`**.
 
 ## Reinforcement Learning (RL)
 
