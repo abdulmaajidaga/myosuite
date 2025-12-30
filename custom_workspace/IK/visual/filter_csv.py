@@ -68,39 +68,44 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, "../../"))
     
-    default_input_dir = os.path.join(project_root, "data", "kinematic", "Stroke")
-    default_output_dir = os.path.join(project_root, "data", "kinematic", "Stroke", "filtered")
-
     parser = argparse.ArgumentParser(description="Filter kinematic data (Butterworth Low-Pass).")
-    parser.add_argument("--input_dir", type=str, default=default_input_dir, help="Directory containing input CSV files.")
-    parser.add_argument("--output_dir", type=str, default=default_output_dir, help="Directory to save filtered CSV files.")
-    parser.add_argument("--cutoff", type=float, default=1.5, help="Low-pass filter cutoff frequency in Hz.")
+    parser.add_argument("--dataset", type=str, choices=['healthy', 'stroke'], default='stroke', help="Dataset to process: 'healthy' or 'stroke'.")
+    parser.add_argument("--cutoff", type=float, default=6.0, help="Low-pass filter cutoff frequency in Hz.")
     parser.add_argument("--fs", type=float, default=200.0, help="Sampling frequency in Hz.")
     parser.add_argument("--order", type=int, default=4, help="Filter order.")
     
     args = parser.parse_args()
     
-    if not os.path.exists(args.output_dir):
+    # Set paths based on dataset choice
+    if args.dataset == 'healthy':
+        input_dir = os.path.join(project_root, "data", "kinematic", "Healthy")
+        output_dir = os.path.join(project_root, "data", "kinematic", "Healthy", "filtered")
+    else: # stroke
+        input_dir = os.path.join(project_root, "data", "kinematic", "Stroke")
+        output_dir = os.path.join(project_root, "data", "kinematic", "Stroke", "filtered")
+    
+    if not os.path.exists(output_dir):
         try:
-            os.makedirs(args.output_dir)
+            os.makedirs(output_dir)
         except OSError as e:
             print(f"Error creating output directory: {e}")
             return
 
     # Find all csv files in the input directory
-    csv_files = glob.glob(os.path.join(args.input_dir, "*.csv"))
+    csv_files = glob.glob(os.path.join(input_dir, "*.csv"))
     
     if not csv_files:
-        print(f"No CSV files found in {args.input_dir}")
+        print(f"No CSV files found in {input_dir}")
         return
 
-    print(f"Found {len(csv_files)} files in {args.input_dir}")
+    print(f"Processing {args.dataset.upper()} dataset...")
+    print(f"Found {len(csv_files)} files in {input_dir}")
     print(f"Filtering with Cutoff={args.cutoff}Hz, Sampling Rate={args.fs}Hz, Order={args.order}")
-    print(f"Output directory: {args.output_dir}")
+    print(f"Output directory: {output_dir}")
     
     for csv_file in csv_files:
         filename = os.path.basename(csv_file)
-        output_path = os.path.join(args.output_dir, filename)
+        output_path = os.path.join(output_dir, filename)
         filter_data(csv_file, output_path, args.cutoff, args.fs, args.order)
 
     print("Done.")

@@ -9,6 +9,7 @@ import glob
 import math
 import json
 import sys
+import argparse
 
 # --- Data Loading & Processing (Matching play_kinematics.py) ---
 
@@ -296,10 +297,30 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, "../../"))
     
-    original_dir = os.path.join(project_root, "data", "kinematic", "Stroke")
-    filtered_dir = os.path.join(project_root, "data", "kinematic", "Stroke", "filtered")
-    output_image_path = os.path.join(script_dir, "velocity_phases_comparison_manual.png")
-    json_path = os.path.join(script_dir, "manual_phase_indices.json")
+    # Parse Args
+    parser = argparse.ArgumentParser(description="Interactive Phase Selector.")
+    parser.add_argument("--dataset", type=str, choices=['healthy', 'stroke'], default='stroke', help="Dataset to process.")
+    args = parser.parse_args()
+    
+    # Determine Paths based on dataset
+    if args.dataset == 'healthy':
+        filtered_dir = os.path.join(project_root, "data", "kinematic", "Healthy", "filtered")
+        original_dir = os.path.join(project_root, "data", "kinematic", "Healthy")
+        
+        # Save output in IK/visual/healthy
+        visual_out_dir = os.path.join(script_dir, "healthy")
+        if not os.path.exists(visual_out_dir):
+            os.makedirs(visual_out_dir)
+            
+        json_path = os.path.join(visual_out_dir, "manual_phase_indices.json")
+        output_image_path = os.path.join(visual_out_dir, "velocity_phases_comparison_manual.png")
+    else: # stroke
+        filtered_dir = os.path.join(project_root, "data", "kinematic", "Stroke", "filtered")
+        original_dir = os.path.join(project_root, "data", "kinematic", "Stroke")
+        
+        # Save output in current dir (IK/visual)
+        json_path = os.path.join(script_dir, "manual_phase_indices.json")
+        output_image_path = os.path.join(script_dir, "velocity_phases_comparison_manual.png")
     
     fs_value = 200.0
     
@@ -316,12 +337,13 @@ def main():
     csv_files = csv_files[:25]
     
     if not csv_files:
-        print("No CSV files found.")
+        print(f"No CSV files found in {filtered_dir}")
         return
 
     print("----------------------------------------------------------------")
-    print("Interactive Phase Selector with 3D Animation (Styled like play_kinematics.py)")
+    print(f"Interactive Phase Selector ({args.dataset.upper()} dataset)")
     print("----------------------------------------------------------------")
+    print(f"Saving progress to: {json_path}")
     
     for filtered_path in csv_files:
         filename = os.path.basename(filtered_path)
@@ -348,8 +370,6 @@ def main():
                 json.dump(saved_data, f, indent=4)
         
     print("\nAll files processed. Generating final summary image...")
-    # NOTE: The summary generator logic is separated; we leave it here for the manual velocity overview
-    # but the user also requested a separate "position" plotter.
     generate_summary_image(csv_files, original_dir, saved_data, output_image_path, fs_value)
 
 def generate_summary_image(csv_files, original_dir, saved_data, output_path, fs):

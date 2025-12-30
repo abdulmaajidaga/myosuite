@@ -117,9 +117,9 @@ def animate_arm_kinematics(df):
 # --- Main Execution ---
 if __name__ == "__main__":
     # Use absolute path
-    file_path = '/home/abdul/Desktop/myosuite/custom_workspace/data/kinematic/Stroke/S11_12_1.csv'
+    # file_path = '/home/abdul/Desktop/myosuite/custom_workspace/data/kinematic/Stroke/S11_12_1.csv'
     # Alternative for Healthy data:
-    # file_path = '/home/abdul/Desktop/myosuite/custom_workspace/data/kinematic/Healthy/01_12_1.csv'
+    file_path = '/home/abdul/Desktop/myosuite/custom_workspace/data/kinematic/Healthy/10_12_2.csv'
 
     
     raw_kinematic_df = process_kinematic_data(file_path)
