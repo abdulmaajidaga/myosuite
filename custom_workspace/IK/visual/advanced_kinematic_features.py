@@ -143,15 +143,31 @@ def calculate_straightness(pos):
 
 # --- 3. Main Analysis Function ---
 
+import argparse
+
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, "../../"))
     
-    filtered_dir = os.path.join(project_root, "data", "kinematic", "Stroke", "filtered")
-    json_path = os.path.join(script_dir, "manual_phase_indices.json")
+    # Parse Args
+    parser = argparse.ArgumentParser(description="Advanced Kinematic Features.")
+    parser.add_argument("--dataset", type=str, choices=['healthy', 'stroke'], default='stroke', help="Dataset to process.")
+    args = parser.parse_args()
+    
+    # Determine Paths
+    if args.dataset == 'healthy':
+        filtered_dir = os.path.join(project_root, "data", "kinematic", "Healthy", "filtered")
+        output_dir = os.path.join(script_dir, "healthy")
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        json_path = os.path.join(output_dir, "manual_phase_indices.json")
+    else:
+        filtered_dir = os.path.join(project_root, "data", "kinematic", "Stroke", "filtered")
+        output_dir = script_dir
+        json_path = os.path.join(script_dir, "manual_phase_indices.json")
     
     if not os.path.exists(json_path):
-        print(f"Error: {json_path} not found.")
+        print(f"Error: {json_path} not found. Please run interactive_phase_selector.py --dataset {args.dataset} first.")
         return
         
     with open(json_path, 'r') as f:
@@ -160,13 +176,17 @@ def main():
     csv_files = sorted(glob.glob(os.path.join(filtered_dir, "*.csv")))[:25]
     fs = 200.0
     
+    if not csv_files:
+        print(f"No CSV files found in {filtered_dir}")
+        return
+
     # Storage for aggregated features
     features = []
     
     # Storage for Cyclograms (Angle-Angle)
     cyclograms = [] # list of (shoulder_angle_array, elbow_angle_array, filename)
     
-    print("Processing 25 files for advanced features...")
+    print(f"Processing 25 files for advanced features ({args.dataset.upper()})...")
     
     for filepath in csv_files:
         filename = os.path.basename(filepath)
@@ -195,7 +215,7 @@ def main():
         reach_angles = angles.iloc[r_start:r_end]
         
         # Elbow Extension ROM (Max - Min during reach)
-        elbow_rom = reach_angles['Elbow_Flexion'].max() - reach_angles['Elbow_Flexion'].min()
+        elbow_rom = reach_angles['Elbow_Flexion'].max() - reach_angles['Elbow_Flexion'].min() if not reach_angles.empty else 0
         
         # Trunk Compensation (Shoulder Displacement)
         s_pos = joints['V_Shoulder'].values
@@ -209,16 +229,20 @@ def main():
         # --- Feature 3: Efficiency (Reach Phase) ---
         # Hand/Joint Ratio: Dist Wrist / Sum(Abs(Delta Angles))
         reach_w_pos = w_pos[r_start:r_end]
-        wrist_dist = np.sum(np.linalg.norm(np.diff(reach_w_pos, axis=0), axis=1))
-        
-        d_shoulder = np.sum(np.abs(np.diff(reach_angles['Shoulder_Elevation'])))
-        d_elbow = np.sum(np.abs(np.diff(reach_angles['Elbow_Flexion'])))
-        joint_travel = d_shoulder + d_elbow
-        
-        efficiency = wrist_dist / joint_travel if joint_travel > 0 else 0
-        
-        # Straightness
-        straightness = calculate_straightness(reach_w_pos)
+        if len(reach_w_pos) > 1:
+            wrist_dist = np.sum(np.linalg.norm(np.diff(reach_w_pos, axis=0), axis=1))
+            
+            d_shoulder = np.sum(np.abs(np.diff(reach_angles['Shoulder_Elevation'])))
+            d_elbow = np.sum(np.abs(np.diff(reach_angles['Elbow_Flexion'])))
+            joint_travel = d_shoulder + d_elbow
+            
+            efficiency = wrist_dist / joint_travel if joint_travel > 0 else 0
+            
+            # Straightness
+            straightness = calculate_straightness(reach_w_pos)
+        else:
+            efficiency = 0
+            straightness = 1.0
         
         # --- Feature 4: Phase Specifics ---
         
@@ -231,14 +255,18 @@ def main():
             
         # Lift: Smoothness (Log Dimensionless Jerk)
         l_start, l_end = idxs[0], idxs[1]
-        lift_dur = (l_end - l_start) / fs
-        lift_vpeak = np.max(vel_mag[l_start:l_end]) if l_end > l_start else 0
-        lift_jerk = jerk[l_start:l_end]
-        smoothness = calculate_smoothness(lift_jerk, lift_dur, lift_vpeak)
-        
-        # Lift: Max Shoulder Abduction (Elevation)
-        lift_angles = angles.iloc[l_start:l_end]
-        max_sh_elev = lift_angles['Shoulder_Elevation'].max() if len(lift_angles) > 0 else 0
+        if l_end > l_start:
+            lift_dur = (l_end - l_start) / fs
+            lift_vpeak = np.max(vel_mag[l_start:l_end])
+            lift_jerk = jerk[l_start:l_end]
+            smoothness = calculate_smoothness(lift_jerk, lift_dur, lift_vpeak)
+            
+            # Lift: Max Shoulder Abduction (Elevation)
+            lift_angles = angles.iloc[l_start:l_end]
+            max_sh_elev = lift_angles['Shoulder_Elevation'].max() if len(lift_angles) > 0 else 0
+        else:
+            smoothness = 0
+            max_sh_elev = 0
         
         # Place: Target Accuracy (Final Position Variance - handled at group level, 
         # but here we'll store final pos to calc variance later)
@@ -268,6 +296,10 @@ def main():
             'Final_X': final_pos[0], 'Final_Y': final_pos[1], 'Final_Z': final_pos[2]
         })
 
+    if not features:
+        print("No valid data processed. Check if manual phase selection is complete.")
+        return
+
     df_feats = pd.DataFrame(features)
     
     # Calc Place Accuracy (Group Variance)
@@ -284,13 +316,11 @@ def main():
     fig, ax = plt.subplots(figsize=(10, 8))
     for s_ang, e_ang, fname in cyclograms:
         ax.plot(s_ang, e_ang, alpha=0.3, linewidth=1, label=fname)
-    # Mean trace
-    # (Resampling needed for true mean, skipping for visual clarity of 'bundle')
     ax.set_xlabel("Shoulder Elevation (deg)")
     ax.set_ylabel("Elbow Flexion (deg)")
     ax.set_title("Inter-Joint Coordination: Shoulder vs Elbow\n(Smooth loops = Good coordination)")
     ax.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(script_dir, "advanced_1_coordination_cyclograms.png"), dpi=150)
+    plt.savefig(os.path.join(output_dir, "advanced_1_coordination_cyclograms.png"), dpi=150)
     
     # 2. Feature Distributions (Boxplots)
     print("Generating Feature Boxplots...")
@@ -318,7 +348,7 @@ def main():
         
     plt.suptitle("Advanced Kinematic Features Distribution", fontsize=16)
     plt.tight_layout()
-    plt.savefig(os.path.join(script_dir, "advanced_2_feature_distributions.png"), dpi=150)
+    plt.savefig(os.path.join(output_dir, "advanced_2_feature_distributions.png"), dpi=150)
     
     # 3. Efficiency Scatter (Straightness vs Efficiency)
     print("Generating Efficiency Scatter...")
@@ -329,12 +359,12 @@ def main():
     plt.ylabel("Hand/Joint Efficiency Ratio")
     plt.title("Efficiency Analysis: Do straighter reaches require less joint work?")
     plt.grid(True, alpha=0.3)
-    plt.savefig(os.path.join(script_dir, "advanced_3_efficiency_scatter.png"), dpi=150)
+    plt.savefig(os.path.join(output_dir, "advanced_3_efficiency_scatter.png"), dpi=150)
     
     print("\nAdvanced Analysis Complete.")
-    print("1. advanced_1_coordination_cyclograms.png")
-    print("2. advanced_2_feature_distributions.png")
-    print("3. advanced_3_efficiency_scatter.png")
+    print(f"1. {os.path.join(output_dir, 'advanced_1_coordination_cyclograms.png')}")
+    print(f"2. {os.path.join(output_dir, 'advanced_2_feature_distributions.png')}")
+    print(f"3. {os.path.join(output_dir, 'advanced_3_efficiency_scatter.png')}")
 
 if __name__ == "__main__":
     main()

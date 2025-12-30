@@ -369,32 +369,52 @@ def generate_3d_phase_paths(csv_files, phase_data, output_path):
 
 # --- Main ---
 
+import argparse
+
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(script_dir, "../../"))
     
-    filtered_dir = os.path.join(project_root, "data", "kinematic", "Stroke", "filtered")
-    json_path = os.path.join(script_dir, "manual_phase_indices.json")
+    # Parse Args
+    parser = argparse.ArgumentParser(description="Comprehensive Kinematic Phase Analysis.")
+    parser.add_argument("--dataset", type=str, choices=['healthy', 'stroke'], default='stroke', help="Dataset to process.")
+    args = parser.parse_args()
+    
+    # Determine Paths
+    if args.dataset == 'healthy':
+        filtered_dir = os.path.join(project_root, "data", "kinematic", "Healthy", "filtered")
+        output_dir = os.path.join(script_dir, "healthy")
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        json_path = os.path.join(output_dir, "manual_phase_indices.json")
+    else: # stroke
+        filtered_dir = os.path.join(project_root, "data", "kinematic", "Stroke", "filtered")
+        output_dir = script_dir
+        json_path = os.path.join(script_dir, "manual_phase_indices.json")
     
     # Outputs
-    out_2d = os.path.join(script_dir, "analysis_1_wrist_trajectories.png")
-    out_3d_poses = os.path.join(script_dir, "analysis_2_poses_3d.png")
-    out_boxplot = os.path.join(script_dir, "analysis_3_boxplots.png")
-    out_3d_paths = os.path.join(script_dir, "analysis_4_paths_3d.png")
-    out_heatmap = os.path.join(script_dir, "analysis_5_heatmap.png")
-    out_norm_time = os.path.join(script_dir, "analysis_6_norm_time.png")
-    out_parallel = os.path.join(script_dir, "analysis_7_parallel_coords.png")
+    out_2d = os.path.join(output_dir, "analysis_1_wrist_trajectories.png")
+    out_3d_poses = os.path.join(output_dir, "analysis_2_poses_3d.png")
+    out_boxplot = os.path.join(output_dir, "analysis_3_boxplots.png")
+    out_3d_paths = os.path.join(output_dir, "analysis_4_paths_3d.png")
+    out_heatmap = os.path.join(output_dir, "analysis_5_heatmap.png")
+    out_norm_time = os.path.join(output_dir, "analysis_6_norm_time.png")
+    out_parallel = os.path.join(output_dir, "analysis_7_parallel_coords.png")
     
     if not os.path.exists(json_path):
-        print(f"Error: {json_path} not found.")
+        print(f"Error: {json_path} not found. Please run interactive_phase_selector.py --dataset {args.dataset} first.")
         return
         
     with open(json_path, 'r') as f:
         phase_data = json.load(f)
         
     csv_files = sorted(glob.glob(os.path.join(filtered_dir, "*.csv")))[:25]
-    if not csv_files: return
+    if not csv_files:
+        print(f"No CSV files found in {filtered_dir}")
+        return
 
+    print(f"Running Analysis on {args.dataset.upper()} dataset...")
+    
     # 1. Extract Features DataFrame
     features_df = extract_features(csv_files, phase_data, 200.0)
     
@@ -409,7 +429,7 @@ def main():
     generate_2d_trajectories(csv_files, phase_data, 200.0, out_2d)
     generate_3d_poses(csv_files, phase_data, out_3d_poses)
     
-    print("\nAll 7 Analysis Charts Generated Successfully!")
+    print(f"\nAll 7 Analysis Charts Generated Successfully in: {output_dir}")
 
 if __name__ == "__main__":
     main()
