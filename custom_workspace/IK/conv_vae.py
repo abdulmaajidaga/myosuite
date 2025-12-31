@@ -18,15 +18,15 @@ import viz_utils as vu
 # --- CONFIGURATION ---
 SEQ_LEN = 100
 PCA_COMPONENTS = 12
-INPUT_CHANNELS = 24 
+INPUT_CHANNELS = 25 # Updated to 25 (12 Pos + 12 Vel + 1 Time)
 CONDITION_DIM = 1
 LATENT_DIM = 64
-BATCH_SIZE = 32 # Increased batch size for larger dataset
+BATCH_SIZE = 32
 LR = 0.0005
-EPOCHS = 300
+EPOCHS = 1000
 BETA = 0.005 
-SMOOTH_WEIGHT = 5.0 # Weight for acceleration penalty
-AUGMENT_FACTOR = 10 # 10x dataset size
+SMOOTH_WEIGHT = 5.0 
+AUGMENT_FACTOR = 10 
 
 # --- DATASET ---
 class ConvDataset(Dataset):
@@ -67,7 +67,7 @@ class ConvDataset(Dataset):
                     all_raw.append(resampled)
                     meta_data.append(fma)
 
-        # Fit PCA on ORIGINAL data (capture true variance)
+        # Fit PCA on ORIGINAL data
         all_stacked = np.vstack(all_raw)
         self.pca = PCA(n_components=PCA_COMPONENTS)
         self.pca.fit(all_stacked)
@@ -81,10 +81,6 @@ class ConvDataset(Dataset):
         for traj in all_raw:
             p = self.pca.transform(traj)
             v = np.diff(p, axis=0, prepend=p[0].reshape(1, -1))
-            
-            # Use separate lists for pos/vel to scale correctly later? 
-            # Actually, standard approach: scale Position, scale Velocity relative to Pos scale.
-            # We need to collect them all first.
             base_pca_samples.append((p, v))
             
         # Fit Scaler on Position
@@ -99,23 +95,25 @@ class ConvDataset(Dataset):
         for i, (p, v) in enumerate(base_pca_samples):
             fma = meta_data[i]
             
-            # Create 10 versions
             for _ in range(AUGMENT_FACTOR):
-                # 1. Scale/Couple logic on base
+                # 1. Scale/Couple logic
                 p_scaled = self.scaler.transform(p)
                 v_scaled = v / self.scaler.scale_
                 
                 combined = np.concatenate([p_scaled, v_scaled], axis=1) # (100, 24)
                 
                 # 2. Augmentation (on standardized data)
-                # Amplitude Scaling (0.95 - 1.05)
                 scale_factor = np.random.uniform(0.95, 1.05)
-                # Noise (Gaussian, std=0.05)
                 noise = np.random.normal(0, 0.05, combined.shape)
                 
-                augmented = (combined * scale_factor) + noise
+                augmented_motion = (combined * scale_factor) + noise
                 
-                # Transpose for Conv1d: (24, 100)
+                # 3. Add Time Channel (0 to 1)
+                # This acts as a positional encoding (Clock Signal)
+                time_seq = np.linspace(0, 1, SEQ_LEN).reshape(-1, 1) # (100, 1)
+                augmented = np.concatenate([augmented_motion, time_seq], axis=1) # (100, 25)
+                
+                # Transpose for Conv1d: (25, 100)
                 aug_t = augmented.T
                 
                 self.data.append({
@@ -123,12 +121,12 @@ class ConvDataset(Dataset):
                     'c': torch.FloatTensor([fma / 66.0])
                 })
 
-        print(f"Dataset Ready: {len(self.data)} samples (Augmented)")
+        print(f"Dataset Ready: {len(self.data)} samples (Augmented with Time Channel)")
 
     def __len__(self): return len(self.data)
     def __getitem__(self, idx): return self.data[idx]['x'], self.data[idx]['c']
 
-# --- CONV CVAE (Wider) ---
+# --- CONV CVAE ---
 class ConvCVAE(nn.Module):
     def __init__(self):
         super(ConvCVAE, self).__init__()
@@ -158,7 +156,7 @@ class ConvCVAE(nn.Module):
             nn.ReLU(),
             nn.ConvTranspose1d(128, 64, 4, 2, 1), # 48
             nn.ReLU(),
-            nn.ConvTranspose1d(64, INPUT_CHANNELS, 4, 2, 1) # 96
+            nn.ConvTranspose1d(64, INPUT_CHANNELS, 4, 2, 1) # 96 -> Interpolated to 100
         )
         self.sizer = nn.AdaptiveAvgPool1d(100)
 
@@ -186,15 +184,18 @@ class ConvCVAE(nn.Module):
         return recon, mu, logvar
 
 def loss_function(recon_x, x, mu, logvar):
-    # 1. Reconstruction
-    mse = nn.MSELoss(reduction='sum')(recon_x, x)
+    # 1. Reconstruction (Weighted for Boundary Anchoring)
+    # Start (0-10) and End (90-100) weighted 50x
+    weights = torch.ones_like(x)
+    weights[:, :, :10] = 50.0
+    weights[:, :, -10:] = 50.0
+    
+    mse = torch.sum((recon_x - x).pow(2) * weights)
     
     # 2. KLD
     kld = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
     
     # 3. Smoothness (Acceleration Penalty)
-    # recon_x shape: (Batch, 24, 100)
-    # Derivative along time axis (dim 2)
     vel = recon_x[:, :, 1:] - recon_x[:, :, :-1]
     acc = vel[:, :, 1:] - vel[:, :, :-1]
     
@@ -217,7 +218,7 @@ def train():
     model = ConvCVAE()
     optimizer = optim.Adam(model.parameters(), lr=LR)
     
-    print(f"Starting Augmented Conv1d Training on {len(dataset)} samples...")
+    print(f"Starting Augmented Conv1d Training (w/ Time Channel) on {len(dataset)} samples...")
     
     for epoch in range(EPOCHS):
         model.train()
