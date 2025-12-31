@@ -1,0 +1,7 @@
+{
+    "LATENT_DIM": 64,
+    "LR": 0.0005,
+    "BETA": 0.01,
+    "SMOOTH_WEIGHT": 5.0,
+    "W_BOUNDARY": 100.0
+}

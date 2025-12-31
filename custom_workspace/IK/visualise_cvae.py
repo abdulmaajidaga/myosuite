@@ -6,92 +6,106 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 import os
 import sys
+import cvae
+# --- CONFIGURATION MATCHING VAE.PY ---
+INPUT_DIM = cvae.INPUT_DIM
+CONDITION_DIM = cvae.CONDITION_DIM
+LATENT_DIM = cvae.LATENT_DIM
+HIDDEN_DIM = cvae.HIDDEN_DIM
 
-# Redefine CVAE class to match training script (needed for loading state_dict)
+
 class CVAE(nn.Module):
-    def __init__(self, input_dim=6301, cond_dim=1, latent_dim=32):
+    def __init__(self):
         super(CVAE, self).__init__()
-        self.input_dim = input_dim
-        self.cond_dim = cond_dim
-        self.latent_dim = latent_dim
 
+        # --- ENCODER (Shared) ---
+        # Takes Trajectory + Duration + FMA -> Latent z
         self.encoder = nn.Sequential(
-            nn.Linear(input_dim + cond_dim, 1024),
+            nn.Linear(INPUT_DIM + 1 + CONDITION_DIM, HIDDEN_DIM),
             nn.ReLU(),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(HIDDEN_DIM, HIDDEN_DIM // 2),
             nn.ReLU()
         )
-        self.fc_mu = nn.Linear(256, latent_dim)
-        self.fc_logvar = nn.Linear(256, latent_dim)
+        self.fc_mu = nn.Linear(HIDDEN_DIM // 2, LATENT_DIM)
+        self.fc_logvar = nn.Linear(HIDDEN_DIM // 2, LATENT_DIM)
 
-        self.decoder = nn.Sequential(
-            nn.Linear(latent_dim + cond_dim, 256),
+        # --- DECODER HEAD 1: TRAJECTORY ---
+        # Takes z + FMA -> 6300 coords
+        self.decoder_traj = nn.Sequential(
+            nn.Linear(LATENT_DIM + CONDITION_DIM, HIDDEN_DIM),
             nn.ReLU(),
-            nn.Linear(256, 512),
+            nn.Linear(HIDDEN_DIM, HIDDEN_DIM),
             nn.ReLU(),
-            nn.Linear(512, 1024),
+            nn.Linear(HIDDEN_DIM, INPUT_DIM) 
+        )
+        
+        # --- DECODER HEAD 2: DURATION ---
+        # Takes z + FMA -> 1 scalar
+        self.decoder_dur = nn.Sequential(
+            nn.Linear(LATENT_DIM + CONDITION_DIM, 32), # Small, focused brain
             nn.ReLU(),
-            nn.Linear(1024, input_dim),
-            nn.Tanh()
+            nn.Linear(32, 1),
+            nn.Sigmoid() 
         )
 
     def encode(self, x, c):
-        x_c = torch.cat([x, c], dim=1)
-        h = self.encoder(x_c)
+        inputs = torch.cat([x, c], dim=1)
+        h = self.encoder(inputs)
         return self.fc_mu(h), self.fc_logvar(h)
 
-    def reparameterize(self, mu, logvar):
-        std = torch.exp(0.5 * logvar)
+    def reparameterize(self, mu, log_var):
+        std = torch.exp(0.5 * log_var)
         eps = torch.randn_like(std)
         return mu + eps * std
 
     def decode(self, z, c):
-        z_c = torch.cat([z, c], dim=1)
-        return self.decoder(z_c)
+        inputs = torch.cat([z, c], dim=1)
+        recon_traj = self.decoder_traj(inputs)
+        recon_dur = self.decoder_dur(inputs)
+        return recon_traj, recon_dur
 
     def forward(self, x, c):
-        mu, logvar = self.encode(x, c)
-        z = self.reparameterize(mu, logvar)
-        recon_x = self.decode(z, c)
-        return recon_x, mu, logvar
+        mu, log_var = self.encode(x, c)
+        z = self.reparameterize(mu, log_var)
+        recon_traj, recon_dur = self.decode(z, c)
+        return recon_traj, recon_dur, mu, log_var
 
 def load_model(model_path, stats_path):
-    # Load Stats
-    stats = np.load(stats_path)
-    data_min = stats['data_min']
-    data_max = stats['data_max']
-    data_range = data_max - data_min
-    data_range[data_range == 0] = 1.0
+    # Load Stats (Optional now, but keeping for compatibility)
+    if os.path.exists(stats_path):
+        stats = np.load(stats_path)
+        data_min = stats['data_min']
+        data_max = stats['data_max']
+        data_range = data_max - data_min
+    else:
+        data_min, data_range = None, None
     
-    # Load Model
-    model = CVAE(input_dim=6301, cond_dim=1, latent_dim=32)
+    # Load Model (Instantiate without arguments)
+    model = CVAE()
     model.load_state_dict(torch.load(model_path))
     model.eval()
     
     return model, data_min, data_range
 
-def generate_sample(model, fma_score, data_min, data_range):
+def generate_sample(model, target_fma, data_min, data_range):
     with torch.no_grad():
-        # Condition
-        cond = torch.tensor([[fma_score / 66.0]], dtype=torch.float32)
-        # Latent
-        z = torch.randn(1, 32)
-        # Decode
-        out_norm = model.decode(z, cond).numpy()
-        # Denormalize: [-1, 1] -> [0, 1] -> Original
-        zero_one = (out_norm + 1) / 2.0
-        out_raw = zero_one * data_range + data_min
+        z = torch.randn(1, LATENT_DIM)
+        norm_fma = target_fma / 66.0
+        c = torch.tensor([[norm_fma]]).float()
         
-        # Split Trajectory and Duration
-        # out_raw is (1, 6301)
-        full_vec = out_raw.flatten()
-        traj = full_vec[:-1] # 6300
-        dur_norm = full_vec[-1] # 1
+        # Get separate outputs
+        recon_traj, recon_dur = model.decode(z, c)
         
-        # Denormalize Duration (It was divided by 10.0)
-        duration = dur_norm * 10.0
+        # Process Trajectory
+        # Denormalize Trajectory (Assuming approx range -1 to 1 based on training)
+        # Training used: traj = raw / max_val. 
+        # We don't have per-sample max_val here, so we must assume a standard scale.
+        # Assuming typical max value approx 600-1000mm.
+        traj = recon_traj.numpy().flatten() * 600.0
+        
+        # Process Duration
+        # Training used: norm_dur = real_dur / 10.0
+        duration = recon_dur.item() * 10.0
         
     return traj, duration
 
@@ -163,7 +177,7 @@ def animate_stick_figure(traj_flat, duration, fma_score):
 
 def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    model_path = os.path.join(base_dir, "output", "cvae_model_full.pth")
+    model_path = os.path.join(base_dir, "output", "cvae_model.pth")
     stats_path = os.path.join(base_dir, "output", "cvae_stats.npz")
     
     if not os.path.exists(model_path):
@@ -174,7 +188,7 @@ def main():
     model, d_min, d_range = load_model(model_path, stats_path)
     
     # Generate for FMA 45 (Mid-range)
-    fma = 20
+    fma = 66
     print(f"Generating Synthetic Arm Motion for FMA Score: {fma}")
     traj, duration = generate_sample(model, fma, d_min, d_range)
     print(f"Predicted Duration: {duration:.2f} seconds")

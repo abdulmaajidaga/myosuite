@@ -9,50 +9,39 @@ import os
 import sys
 import pickle
 
+# Ensure we can import from the same directory
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from conv_vae import ConvCVAE
+except ImportError:
+    print("Error: Could not import ConvCVAE from conv_vae.py")
+    sys.exit(1)
+
 # --- CONFIG ---
+# These are used for generation/animation logic, not model definition anymore
 PCA_COMPONENTS = 12
-INPUT_CHANNELS = 24 
 CONDITION_DIM = 1
 LATENT_DIM = 64
-
-# --- MODEL (Must match) ---
-class ConvCVAE(nn.Module):
-    def __init__(self):
-        super(ConvCVAE, self).__init__()
-        self.encoder = nn.Sequential(
-            nn.Conv1d(INPUT_CHANNELS, 64, 4, 2, 1), nn.ReLU(),
-            nn.Conv1d(64, 128, 4, 2, 1), nn.ReLU(),
-            nn.Conv1d(128, 256, 4, 2, 1), nn.ReLU(),
-            nn.Flatten()
-        )
-        self.fc_mu = nn.Linear(3072 + CONDITION_DIM, LATENT_DIM)
-        self.fc_logvar = nn.Linear(3072 + CONDITION_DIM, LATENT_DIM)
-        self.decoder_input = nn.Linear(LATENT_DIM + CONDITION_DIM, 3072)
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose1d(256, 128, 4, 2, 1), nn.ReLU(),
-            nn.ConvTranspose1d(128, 64, 4, 2, 1), nn.ReLU(),
-            nn.ConvTranspose1d(64, INPUT_CHANNELS, 4, 2, 1)
-        )
-        self.sizer = nn.AdaptiveAvgPool1d(100)
-
-    def decode(self, z, c):
-        z_c = torch.cat([z, c], dim=1)
-        h = self.decoder_input(z_c).view(-1, 256, 12)
-        return self.sizer(self.decoder(h))
 
 def generate(model, fma_score):
     model.eval()
     with torch.no_grad():
         z = torch.randn(1, LATENT_DIM)
         c = torch.tensor([[fma_score / 66.0]])
-        recon = model.decode(z, c) # (1, 24, 100)
-        return recon.squeeze().T.numpy() # (100, 24)
+        recon = model.decode(z, c) # (1, 25, 100)
+        return recon.squeeze().T.numpy() # (100, 25)
 
 def animate(traj, fma, pca, scaler):
     # Inverse Coupled Scaling
-    # Split Pos/Vel
+    # Split Pos/Vel/Time
+    # traj is (100, 25)
+    # 0-11: Position (12)
+    # 12-23: Velocity (12)
+    # 24: Time (1)
+    
     scaled_pos = traj[:, :12]
-    scaled_vel = traj[:, 12:]
+    # scaled_vel = traj[:, 12:24] 
     
     # Inverse Scale Position
     pca_pos = scaler.inverse_transform(scaled_pos)
@@ -71,6 +60,10 @@ def animate(traj, fma, pca, scaler):
     ax.set_title(f"Conv1d VAE Generation (FMA {fma})")
     
     frames = smooth_traj.reshape(100, -1)
+    # Assuming standard marker mapping (starts with wrist, etc)
+    # This depends on the original CSV structure.
+    # Usually: Wrist, Elbow, Shoulder are in specific columns.
+    # Indices 0:3, 21:24, 48:51 were used in previous version.
     wra = frames[:, 0:3]; elb = frames[:, 21:24]; sho = frames[:, 48:51]
     
     all_p = np.vstack([wra, elb, sho])
@@ -99,12 +92,19 @@ if __name__ == "__main__":
     scaler_path = os.path.join(base, "output/scaler.pkl")
     
     if not os.path.exists(model_path):
-        print("Model not found.")
+        print("Model not found. Run conv_vae.py to train first.")
     else:
         model = ConvCVAE()
-        model.load_state_dict(torch.load(model_path))
-        with open(pca_path, 'rb') as f: pca = pickle.load(f)
-        with open(scaler_path, 'rb') as f: scaler = pickle.load(f)
+        # Ensure model is compatible with the saved state dict
+        try:
+            model.load_state_dict(torch.load(model_path))
+            print("Model loaded successfully.")
             
-        t = generate(model, 66)
-        animate(t, 66, pca, scaler)
+            with open(pca_path, 'rb') as f: pca = pickle.load(f)
+            with open(scaler_path, 'rb') as f: scaler = pickle.load(f)
+                
+            t = generate(model, 66)
+            animate(t, 66, pca, scaler)
+        except RuntimeError as e:
+            print(f"Error loading model: {e}")
+            print("The model definition likely doesn't match the checkpoint.")
