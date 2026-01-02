@@ -7,7 +7,7 @@ import os
 
 # --- Configuration ---
 # Set the path to the CSV file you want to view
-FILE_TO_VIEW = "custom_workspace/data/kinematic/augmented/S1_12_3_to_15_12_3_processed/FMA_21.csv"  # <--- CHANGE THIS PATH
+FILE_TO_VIEW = "custom_workspace/data/kinematic/augmented_smooth/S1_12_3_to_07_12_2_processed/FMA_65.csv"  # <--- CHANGE THIS PATH
 
 def play_motion(csv_path):
     if not os.path.exists(csv_path):
