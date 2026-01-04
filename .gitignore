@@ -124,3 +124,4 @@ osl.log
 /workspace
 
 *processed.xml
+/custom_workspace/data/kinematic/Augmented/*

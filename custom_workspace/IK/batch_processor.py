@@ -2,6 +2,9 @@
 ===============================================================================
 FILE: batch_processor.py
 ===============================================================================
+This script manages the batch processing pipeline for converting multiple CSV motion files into TRC, MOT, and MP4 formats. 
+It handles file discovery, prioritization (specifically ensuring reference files are processed first), and error logging, 
+producing a summary report of the processing status and IK errors.
 """
 import os
 import glob

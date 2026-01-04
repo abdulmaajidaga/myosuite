@@ -8,7 +8,7 @@ This directory contains a comprehensive pipeline for processing, analyzing, and 
 2.  **Inverse Kinematics (IK):** Solves joint angles from marker positions using a musculoskeletal model.
 3.  **Machine Learning:** Trains Variational Autoencoders (ConvVAE, CVAE, TransformerVAE) to learn the manifold of human arm motion conditioned on FMA (Fugl-Meyer Assessment) scores.
 4.  **Generation & Augmentation:** Synthesizes new motion trajectories for specific impairment levels (FMA scores) to augment datasets.
-5.  **Visualization & Analysis:** Tools to visualize motions, compare real vs. generated data, and analyze latent spaces.
+5.  **Visualization & Analysis:** Tools to visualize motions, compare real vs. generated data, and analyze latent spaces and spatial trends.
 
 ---
 
@@ -42,21 +42,31 @@ These scripts define the neural network architectures used for motion synthesis.
 Scripts for generating intermediate motion stages between different impairment levels.
 *   **`fma_interpolation.py`**: Interpolates between motion trajectories based on FMA scores.
 *   **`fma_interpolation_standardised.py`**: Standardized version of the interpolation logic, likely normalizing origins/frames first.
+*   **`fma_morph_smooth.py`**: Generates smooth morphed motions between stroke and healthy data.
 *   **`fma_skeleton_morph.py`**: Morphs skeleton poses directly.
 *   **`fma_skeleton_morph_time.py`**: Accounts for temporal warping (time-series alignment) during morphing.
+*   **`cvae_morph.py`**: CVAE-based morphing of motions conditioned on FMA scores.
+*   **`cvae_morph_time.py`**: Models and predicts the duration of motions for time-normalized morphing.
+*   **`advanced_kinematics_morph.py`**: Advanced analysis and morphing logic for kinematic data.
 
 ### 6. Visualization & Analytics
 *   **`visualise_processed.py`**: Simple 3D viewer for processed CSV skeleton data.
 *   **`visualise_motion_morph.py`**: Visualizes the morphing process between two motions.
 *   **`visualise_conv.py` / `visualise_cvae.py` / `visualise_transformer.py`**: Visualizes the output of the trained models (reconstruction quality).
-*   **`visualise_conv_analytics.py` / `visualise_cvae_analytics.py` / `visualise_transformer_analytics.py`**: specific analytics for the models (e.g., loss curves, latent space distribution).
-*   **`visualise_transformer_cycle.py`**: Visualizes a cycle of motion generation (e.g., generating a full movement loop).
+*   **`visualise_conv_analytics.py` / `visualise_cvae_analytics.py` / `visualise_transformer_analytics.py`**: Specific analytics for the models (e.g., loss curves, latent space distribution).
+*   **`visualise_transformer_cycle.py`**: Visualizes a cycle of motion generation.
+*   **`visualise_skeleton_transformer.py`**: Visualizes the results of the Skeleton Transformer model.
+*   **`visualise_spatial_trends.py`**: Visualizes spatial trends across Stroke, Healthy, and Augmented groups.
+*   **`cvae_morph_visualise.py`**: Visualizes generated motions from the CVAE morphing model.
+*   **`cvae_morph_visualise_real.py`**: Visualizes real motions alongside CVAE generated ones for comparison.
 
 ### 7. Comparison & Validation
-*   **`compare_real_vs_generated.py`**: quantitatively compares real patient data vs. AI-generated data (using metrics like correlation, jerk, etc.).
-*   **`compare_kinematics_morph.py`**: Compares kinematic features (velocity, acceleration) between source, target, and morphed motions.
+*   **`compare_real_vs_generated.py`**: Quantitatively compares real patient data vs. AI-generated data (metrics like correlation, jerk, etc.).
+*   **`compare_kinematics_morph.py`**: Compares kinematic features between source, target, and morphed motions.
+*   **`compare_kinematics_morph_all.py`**: Batch comparison of kinematics morphing across all datasets.
+*   **`compare.py`**: General purpose comparison tool for kinematic data.
 *   **`calc_mot2invdyn.py`**: Calculates Inverse Dynamics (forces/torques) from motion files to validate physical feasibility.
-*   **`sanity_check.py` / `sanity_check1.py`**: Basic scripts to verify data integrity or quick model tests.
+*   **`sanity_check.py` / `sanity_check1.py` / `sanity_check1_fma.py`**: Basic scripts to verify data integrity and quick model/data tests.
 
 ---
 
