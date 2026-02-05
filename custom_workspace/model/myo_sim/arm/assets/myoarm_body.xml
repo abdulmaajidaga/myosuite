@@ -478,6 +478,10 @@
                                                 <geom mesh="capitate" name="capitate" type="mesh"/>
                                                 <site name="PL-P3" pos="0.0092 -0.019 -0.0175"/>
                                                 <site name="FDS5-P3" pos="-0.0024 -0.0139 -0.0138"/>
+                                                
+                                                /added here
+                                                <site name="V_Vector" pos="-0.035 0 0" size="0.01" rgba="1 0 0 1"/>
+                                                
                                                 <site name="FDS4-P3" pos="-0.0008 -0.0134 -0.0136"/>
                                                 <site name="FDS3-P3" pos="0.0068 -0.0138 -0.014"/>
                                                 <site name="FDS2-P3" pos="0.0089 -0.0137 -0.0139"/>
