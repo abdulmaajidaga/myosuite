@@ -126,3 +126,4 @@ osl.log
 *processed.xml
 /custom_workspace/data/kinematic/cutoff/augmented/*
 /custom_workspace/IK/output/*
+.vscode/
