@@ -22,9 +22,9 @@ import trc_data_scaler
 MODEL_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/model/myo_sim/arm/myoarm.xml'
 TRC_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/01_12_1.trc'
 OUTPUT_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/01_12_1.mot'
-REFERENCE_MOT_PATH = '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/S5_12_1.mot'
+REFERENCE_MOT_PATH = os.environ.get("IK_REFERENCE_MOT", '/home/abdul/Desktop/myosuite/custom_workspace/IK/output/mot/p_originals/S5_12_1.mot')
 
-INTERACTIVE_ALIGN = True # <--- KEEP FALSE FOR BATCH
+INTERACTIVE_ALIGN = os.environ.get("IK_INTERACTIVE_ALIGN", "True").lower() != "false"  # env override for batch
 SCALE_DATA = True
 LOCK_SHOULDER = True
 LOCKED_JOINT_KEYWORDS = ["shoulder", "clavicle", "scapula"]

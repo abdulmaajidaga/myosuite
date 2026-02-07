@@ -70,6 +70,39 @@ Scripts for generating intermediate motion stages between different impairment l
 
 ---
 
+## 📁 Subdirectories
+
+### [`processed/`](processed/README.md) — Data Preprocessing & Format Conversion
+Scripts that bridge **chest-normalized processed CSVs** (100-frame, 12-column format) to the full IK/ID simulation pipeline. Handles resampling back to original frame counts, TRC conversion with wrist vector support, batch IK solving, inverse dynamics, and video rendering.
+
+| Script | Purpose |
+|--------|---------|
+| `preprocess_markers.py` | Raw MoCap → 12-column processed CSV (joint centers + chest normalization) |
+| `resample_p_time.py` | Restore original frame count from 100-frame normalization |
+| `p_convert_csv2trc.py` | Processed CSV → TRC with V_Vector (wrist orientation) |
+| `p_convert_trc2mot.py` | Batch IK solver → MOT joint angles via MuJoCo |
+| `p_convert_mot2video.py` | MOT → MP4 video rendering |
+| `p_calc_mot2invdyn.py` | Inverse dynamics: joint torques and muscle forces |
+
+### [`cutoff/`](cutoff/README.md) — FMA-Targeted Motion Generation (CVAE Pipeline)
+The production pipeline for generating synthetic upper-limb motions conditioned on **FMA (Fugl-Meyer Assessment)** scores. Contains the trained BiLSTM+Attention CVAE model, training/generation scripts, and analysis tools.
+
+| Component | Description |
+|-----------|-------------|
+| `models/` | Trained CVAE checkpoint (`cvae_cutoff_fma_best.pth`) + scaler |
+| `scripts/` | Training, generation, verification, trend analysis, interactive viewer |
+| `output/` | Generated motions (`FMA_18.csv` to `FMA_66.csv`) + analysis plots |
+
+Key results: the model correctly learns all four clinical trends (reduced ROM, slower velocity, increased trunk compensation, increased jerk at lower FMA scores).
+
+### [`modular/`](modular/) — Reusable IK Utilities
+Modular helper package for the IK pipeline: data I/O, IK solver, transforms, and visualization utilities. Imported by `run_modular.py`.
+
+### [`visual/`](visual/) — Visualization & Analysis Scripts
+30+ visualization scripts for dashboards, phase selection, spatial trends, manifold plots, and clinical analysis. Includes `new_interactive_phase_selector.py` for manual phase boundary selection and `generate_master_dashboard.py` for unified HTML reports.
+
+---
+
 ## 🛠️ Usage Examples
 
 **1. Run the Full IK Pipeline (Batch Mode):**
