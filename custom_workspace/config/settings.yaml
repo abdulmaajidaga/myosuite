@@ -1,0 +1,96 @@
+# =============================================================================
+# Centralized Configuration for Stroke Rehabilitation Pipeline
+# =============================================================================
+# All paths are relative to project root (custom_workspace/)
+
+# --- Model Paths ---
+paths:
+  mujoco_arm_model: "models/model/myo_sim/arm/myoarm.xml"
+  cvae_model: "models/cvae/cvae_cutoff_fma.pth"
+  cvae_model_best: "models/cvae/cvae_cutoff_fma_best.pth"
+  cvae_scaler: "models/cvae/scaler_cutoff_fma.pkl"
+
+  # Data directories
+  data_healthy: "data/kinematic/healthy"
+  data_stroke: "data/kinematic/stroke"
+  data_cutoff_processed: "data/kinematic/cutoff/processed"
+  data_cutoff_original: "data/kinematic/cutoff/original"
+  data_cutoff_augmented: "data/kinematic/cutoff/augmented"
+
+  # Output - originals (full frame count, real MoCap)
+  output_dir: "output"
+  output_originals_trc: "output/originals/trc"
+  output_originals_mot: "output/originals/mot"
+  output_originals_videos: "output/originals/videos"
+  output_originals_id: "output/originals/id"
+
+  # Output - compressed (100-frame resampled)
+  output_compressed_trc: "output/compressed/trc"
+  output_compressed_mot: "output/compressed/mot"
+  output_compressed_videos: "output/compressed/videos"
+  output_compressed_id: "output/compressed/id"
+
+  # Output - generated (CVAE)
+  output_generated: "output/generated"
+  output_generated_csv: "output/generated/csv"
+  output_generated_plots: "output/generated/plots"
+
+  # Output - other
+  output_analysis: "output/analysis"
+  output_phase_indices: "output/phase_indices"
+  output_phase_indices_stroke: "output/phase_indices/stroke_phase_indices.json"
+  output_phase_indices_healthy: "output/phase_indices/healthy_phase_indices.json"
+
+  # Reference files
+  reference_mot: "output/originals/mot/S5_12_1.mot"
+  reference_healthy_csv: "data/kinematic/cutoff/augmented/01_12_1_FMA66.csv"
+  scores_file: "output/scores.csv"
+
+  # Script locations (for subprocess calls)
+  script_csv2trc: "src/data_processing/convert_csv2trc.py"
+  script_trc2mot: "src/inverse_kinematics/convert_trc2mot.py"
+  script_mot2video: "src/visualization/convert_mot2video.py"
+  script_mot2invdyn: "src/inverse_dynamics/calc_mot2invdyn.py"
+
+# --- Pipeline Settings ---
+pipeline:
+  data_rate: 200.0
+  visualize_alignment: false
+  interactive_align: false
+  scale_data: true
+  lock_shoulder: true
+  locked_joint_keywords: ["shoulder", "clavicle", "scapula"]
+
+# --- CVAE Hyperparameters ---
+cvae:
+  input_dim: 15        # 12 arm + 3 trunk
+  condition_dim: 1
+  hidden_dim: 256
+  latent_dim: 32
+  num_heads: 4
+  seq_len: 100
+  batch_size: 32
+  learning_rate: 0.001
+  epochs: 300
+
+  arm_cols: ['Sh_x','Sh_y','Sh_z','El_x','El_y','El_z','Wr_x','Wr_y','Wr_z','WrVec_x','WrVec_y','WrVec_z']
+  trunk_cols: ['Trunk_x', 'Trunk_y', 'Trunk_z']
+
+# --- Video / Rendering ---
+video:
+  camera_azimuth: 0
+  camera_distance: 2.5
+  camera_elevation: -20
+  camera_lookat: [-0.1, 0.0, 1.4]
+  width: 640
+  height: 480
+
+# --- Inverse Dynamics ---
+inverse_dynamics:
+  solve_joints: ['elbow_flexion', 'pro_sup', 'deviation', 'flexion']
+  shoulder_scale: 0.00001
+  target_peak_torque: 12.0
+  low_pass_cutoff: 1.5
+
+# --- Conda Environment ---
+conda_python: "/home/abdul/miniconda3/envs/MyoSuite/bin/python"

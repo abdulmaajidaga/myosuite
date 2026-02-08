@@ -123,7 +123,33 @@ osl.csv
 osl.log
 /workspace
 
+# Custom #
 *processed.xml
-/custom_workspace/data/kinematic/cutoff/augmented/*
-/custom_workspace/IK/output/*
 .vscode/
+.claude/
+
+# Large data directories
+/custom_workspace/data/kinematic/cutoff/augmented/
+/custom_workspace/output/
+/custom_workspace/models/cvae/*.pth
+/custom_workspace/models/cvae/*.pkl
+
+# Generated files
+*.mp4
+*.avi
+*.mot
+*.trc
+*.png
+*.svg
+
+# MuJoCo logs
+MUJOCO_LOG.TXT
+
+# Trained RL models
+**/ppo_*.zip
+
+# Temp / OS
+*.swp
+*.swo
+*~
+Thumbs.db

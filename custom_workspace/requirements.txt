@@ -1,0 +1,16 @@
+numpy
+pandas
+scipy
+matplotlib
+scikit-learn
+torch
+joblib
+tqdm
+mujoco
+myosuite
+skvideo
+Pillow
+osqp
+pyyaml
+stable-baselines3
+gymnasium

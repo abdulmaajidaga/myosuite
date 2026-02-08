@@ -11,80 +11,118 @@ This is a **stroke rehabilitation research platform** that processes motion capt
 ### Run the Full IK Pipeline (Batch Mode)
 ```bash
 cd /home/abdul/Desktop/myosuite/custom_workspace
-python IK/run.py  # Set RUN_BATCH_MODE = True in the script
+python scripts/run_pipeline.py  # Set RUN_BATCH_MODE = True in the script
 ```
 
-### Process a Single File
-Edit `IK/run.py` and set `RUN_BATCH_MODE = False`, then:
+### Process a Single File (Modular Pipeline)
 ```bash
-python IK/run.py
+python scripts/run_modular_pipeline.py
 ```
 
 ### Individual Conversion Steps
 ```bash
 # CSV to TRC (marker trajectories)
-python IK/convert_csv2trc.py /path/to/input.csv /path/to/output.trc
+python src/data_processing/convert_csv2trc.py /path/to/input.csv /path/to/output.trc
 
 # TRC to MOT (inverse kinematics)
-python IK/convert_trc2mot.py model/myo_sim/arm/myoarm.xml IK/output/file.trc IK/output/file.mot
+python src/inverse_kinematics/convert_trc2mot.py models/myo_sim/arm/myoarm.xml output/01_12_1.trc output/01_12_1.mot
 
 # MOT to Video
-python IK/convert_mot2video.py model/myo_sim/arm/myoarm.xml IK/output/file.mot IK/output/file.mp4
+python src/visualization/convert_mot2video.py models/myo_sim/arm/myoarm.xml output/file.mot output/file.mp4
+
+# MOT to Inverse Dynamics
+python src/inverse_dynamics/calc_mot2invdyn.py
+```
+
+### Run Generated Motion Pipeline (CVAE output -> IK/ID)
+```bash
+python scripts/run_generated_pipeline.py                # Process all generated FMA files
+python scripts/run_generated_pipeline.py FMA_50.csv     # Process a single file
+python scripts/run_generated_pipeline.py --skip-id      # Skip inverse dynamics
 ```
 
 ### Train CVAE Model
 ```bash
-python IK/cvae_train_model.py
-# Outputs: IK/output/cvae/cvae.pth and IK/output/cvae/scaler.pkl
+python src/generation/cvae_train.py -n 15000 -e 300
+# Outputs: models/cvae/cvae_cutoff_fma.pth and models/cvae/scaler_cutoff_fma.pkl
 ```
 
 ### Generate Synthetic Motion
 ```bash
-python IK/cvae_generate_motion.py 50  # Generate motion for FMA score 50
+python src/generation/cvae_generate.py 50  # Generate motion for FMA score 50
 ```
 
 ### Train RL Agent (Imitation Learning)
 ```bash
-cd RL
-python train_drinking_task.py
+python src/rl/train_drinking_task.py
 ```
 
 ## Architecture
 
 ### Data Pipeline
 ```
-CSV (Raw MHH Mocap) → TRC (Markers) → MOT (Joint Angles) → MP4 (Video)
-                                   ↘ Inverse Dynamics (Forces/Torques)
+CSV (Raw MHH Mocap) -> TRC (Markers) -> MOT (Joint Angles) -> MP4 (Video)
+                                     \-> Inverse Dynamics (Forces/Torques)
 ```
 
 ### ML Pipeline
 ```
-Augmented Data (FMA_0 to FMA_66 CSVs) → CVAE Training → Motion Generation
+Augmented Data (FMA_0 to FMA_66 CSVs) -> CVAE Training -> Motion Generation
 ```
 
 ### Directory Structure
-- `data/kinematic/` - Input motion capture data (Healthy/, Stroke/, Augmented/)
-- `IK/` - Inverse kinematics pipeline and generative models
-- `IK/modular/` - Reusable IK utilities (data_io, ik_solver, transforms, visualization)
-- `IK/output/` - Generated TRC, MOT, MP4, and trained models
-- `IK/visual/` - Visualization and analysis scripts (~30+)
-- `model/myo_sim/arm/` - MuJoCo musculoskeletal model (myoarm.xml)
-- `RL/` - Reinforcement learning with imitation learning
-
-### Key Configuration (convert_trc2mot.py)
-```python
-INTERACTIVE_ALIGN = False  # Must be False for batch processing
-SCALE_DATA = True          # Apply retargeting
-LOCK_SHOULDER = True       # Shoulder joint constrained
-REFERENCE_MOT_PATH = "S5_12_1.mot"  # Initial pose reference
+```
+custom_workspace/
+├── config/settings.yaml          # Centralized configuration (all paths + hyperparams)
+├── data/kinematic/               # Input motion capture data
+│   ├── healthy/                  # Healthy subject recordings
+│   ├── stroke/                   # Stroke patient recordings
+│   └── cutoff/                   # Processed cutoff data + augmented (56k files)
+├── models/
+│   ├── myo_sim/arm/myoarm.xml   # MuJoCo musculoskeletal model
+│   └── cvae/                     # Trained CVAE weights + scaler
+├── src/
+│   ├── data_processing/          # CSV->TRC, preprocessing, resampling
+│   ├── inverse_kinematics/       # TRC->MOT, alignment, scaling
+│   ├── inverse_dynamics/         # MOT->torques/forces
+│   ├── generation/               # CVAE model, train, generate, augment
+│   │   └── model.py              # Shared MotionCVAE architecture
+│   ├── rl/                       # Imitation learning
+│   ├── visualization/            # All rendering, plotting, analysis
+│   └── utils/                    # Config loader, shared I/O, transforms
+├── scripts/                      # Thin CLI entry points
+│   ├── run_pipeline.py           # Batch IK pipeline
+│   ├── run_modular_pipeline.py   # Single-file modular pipeline
+│   └── run_generated_pipeline.py # CVAE -> IK/ID bridge
+├── output/                       # All generated outputs
+├── docs/info/                    # Patient docs, data release notes
+├── tests/
+└── requirements.txt
 ```
 
-### CVAE Hyperparameters (cvae_train_model.py)
+### Configuration
+
+All paths are centralized in `config/settings.yaml` and loaded via `src/utils/config.py`:
 ```python
-INPUT_DIM = 12        # Shoulder(3) + Elbow(3) + Wrist(3) + WristVector(3)
+from src.utils.config import get_path, get, get_project_root
+
+model_path = get_path("mujoco_arm_model")   # Absolute path from config
+data_rate = get("pipeline", "data_rate")     # Config value from any section
+```
+
+### Key Settings (config/settings.yaml)
+- `paths.mujoco_arm_model` - MuJoCo arm XML
+- `paths.reference_mot` - Reference MOT for IK alignment
+- `pipeline.data_rate` - 200 Hz
+- `pipeline.interactive_align` - Must be false for batch mode
+
+### CVAE Hyperparameters (src/generation/model.py)
+```python
+INPUT_DIM = 15        # 12 arm + 3 trunk
 CONDITION_DIM = 1     # FMA score (normalized 0-66)
-HIDDEN_DIM = 128
-LATENT_DIM = 16
+HIDDEN_DIM = 256
+LATENT_DIM = 32
+NUM_HEADS = 4         # Self-attention heads
 SEQ_LEN = 100         # Frames per trajectory
 ```
 
@@ -107,6 +145,8 @@ SEQ_LEN = 100         # Frames per trajectory
 
 2. **Scaler Persistence**: Always save/load the StandardScaler with the CVAE model - same scaler must be used for training AND generation
 
-3. **IK Error Checking**: Review `IK/output/batch_report.csv` for IK convergence errors after batch processing
+3. **V_Vector Fix**: CVAE outputs WrVec as direction (WRB-WRA). Model site V_Vector is a position. Must reconstruct: `V_Vector = V_Wrist + WrVec`
 
-4. **Visualization Dashboard**: Run `python IK/visual/generate_master_dashboard.py` to create a unified HTML report at `IK/visual/master_dashboard.html`
+4. **Environment**: Use conda env `MyoSuite` at `/home/abdul/miniconda3/envs/MyoSuite/bin/python` (Python 3.9, has dm_control)
+
+5. **IK Error Checking**: Review batch reports for IK convergence errors after batch processing. Typical errors: originals ~18mm, generated ~24-30mm, >200mm = bad sample
