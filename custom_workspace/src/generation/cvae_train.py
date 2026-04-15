@@ -1,284 +1,323 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader, random_split
+"""
+cvae_train.py — Train the FMA-conditioned motion CVAE.
+
+Default config (D_base, best validated — wrist_rho=0.914, trunk_rho=-0.895):
+  Architecture : FiLM + CFG, no residual (Stage 2)
+  Data source  : SMOTE augmented (~58k files, 15k cap)
+  Losses       : w_vel=10, w_acc=2.5, w_kl=0.2, w_dyn=2.0
+  lr           : 1e-3, ReduceLROnPlateau patience=15
+
+Outputs (models/cvae/):
+  cvae_cutoff_fma_best.pth   — best validation checkpoint
+  cvae_cutoff_fma.pth        — final checkpoint
+  scaler_cutoff_fma.pkl      — StandardScaler (must be kept with model)
+  config.json                — model + loss config (needed by cvae_generate.py)
+
+Usage:
+  python src/generation/cvae_train.py                        # defaults
+  python src/generation/cvae_train.py -e 400 --data-source smote
+  python src/generation/cvae_train.py --max-samples all      # full dataset
+"""
+
+import os, sys, json, argparse, glob, math
 import numpy as np
 import pandas as pd
-import os
-import glob
-import joblib
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader, random_split
 from scipy.signal import resample
 from sklearn.preprocessing import StandardScaler
-import math
-import sys
-import argparse
+import joblib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+from src.generation.model import MotionCVAE, SEQ_LEN, INPUT_DIM
 from src.utils.config import get_path, get
 
-# --- CONFIGURATION ---
-# Use FMA-targeted augmented data (FMA score embedded in filename)
-DATA_DIR = get_path("data_cutoff_augmented")
+# ── Constants ─────────────────────────────────────────────────────────────────
+ARM_COLS   = ['Sh_x','Sh_y','Sh_z','El_x','El_y','El_z',
+              'Wr_x','Wr_y','Wr_z','WrVec_x','WrVec_y','WrVec_z']
+TRUNK_COLS = ['Trunk_x','Trunk_y','Trunk_z']
+COLS       = ARM_COLS + TRUNK_COLS
 
-MODEL_SAVE_PATH = get_path("cvae_model")
-SCALER_SAVE_PATH = get_path("cvae_scaler")
+BATCH_SIZE = 256
+DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Hyperparameters - Improved architecture
-INPUT_DIM = 15       # 12 arm + 3 trunk
-CONDITION_DIM = 1
-HIDDEN_DIM = 256
-LATENT_DIM = 32
-NUM_HEADS = 4        # For self-attention
-SEQ_LEN = 100
-BATCH_SIZE = 32 
-LEARNING_RATE = 1e-3
-EPOCHS = 300
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# D_base — best config from systematic ablation (Phases A–D in test/)
+BEST_MODEL_CONFIG = {
+    "use_film":          True,
+    "use_cfg":           True,
+    "use_residual":      False,
+    "use_temporal_conv": False,
+    "latent_dim":        32,
+}
 
-# 12 arm columns + 3 trunk columns
-ARM_COLS = ['Sh_x','Sh_y','Sh_z','El_x','El_y','El_z','Wr_x','Wr_y','Wr_z','WrVec_x','WrVec_y','WrVec_z']
-TRUNK_COLS = ['Trunk_x', 'Trunk_y', 'Trunk_z']
-COLS = ARM_COLS + TRUNK_COLS
+BEST_LOSS_WEIGHTS = {
+    "w_vel": 10.0,
+    "w_acc":  2.5,
+    "w_kl":   0.2,
+    "w_dyn":  2.0,
+}
 
-# --- 1. FMA-TARGETED DATASET (FMA scores embedded in filenames) ---
+DATA_SOURCE_PATHS = {
+    "smote":  "data_cutoff_augmented_smote",
+    "dtw":    "data_cutoff_augmented_dtw",
+    "linear": "data_cutoff_augmented_linear",
+}
 
-class CutoffDataset(Dataset):
-    """Dataset that loads FMA-targeted augmented files with FMA score in filename."""
 
-    def __init__(self, data_dir, scaler, seq_len=100, max_samples=None):
-        self.files = []
-        self.seq_len = seq_len
-        self.scaler = scaler
-        import re
-        import random
+# ── Dataset ───────────────────────────────────────────────────────────────────
 
-        # Load all CSV files - FMA score is in filename
+class MotionDataset(Dataset):
+    """Pre-caches all data into RAM tensors for fast GPU training."""
+
+    def __init__(self, data_dir, scaler, max_samples=15000):
+        import re, random
         all_files = sorted(glob.glob(os.path.join(data_dir, "*.csv")))
 
-        # Group files by FMA score
-        fma_groups = {}
-        for fpath in all_files:
-            fname = os.path.basename(fpath)
-            match = re.search(r'_FMA(\d+)\.csv$', fname)
-            if match:
-                score = int(match.group(1))
-                if score not in fma_groups:
-                    fma_groups[score] = []
-                fma_groups[score].append((fpath, float(score)))
+        groups = {}
+        for f in all_files:
+            m = re.search(r'_FMA(\d+)\.csv$', f)
+            if m:
+                s = int(m.group(1))
+                groups.setdefault(s, []).append((f, float(s)))
 
-        total_files = sum(len(v) for v in fma_groups.values())
-
-        # Stratified sampling: equal samples per FMA score
-        if max_samples is not None and total_files > max_samples:
+        total = sum(len(v) for v in groups.values())
+        if max_samples and total > max_samples:
             random.seed(42)
-            n_scores = len(fma_groups)
-            samples_per_score = max_samples // n_scores
-
-            self.files = []
-            for score in sorted(fma_groups.keys()):
-                files_for_score = fma_groups[score]
-                if len(files_for_score) > samples_per_score:
-                    self.files.extend(random.sample(files_for_score, samples_per_score))
-                else:
-                    self.files.extend(files_for_score)
-
-            random.shuffle(self.files)
-            print(f"Stratified sampling: {len(self.files)} from {total_files} files")
-            print(f"  (~{samples_per_score} per FMA score, {n_scores} scores)")
+            per_score = max_samples // len(groups)
+            files = []
+            for s in sorted(groups):
+                g = groups[s]
+                files.extend(random.sample(g, min(per_score, len(g))))
+            random.shuffle(files)
         else:
-            self.files = [(f, s) for files in fma_groups.values() for f, s in files]
-            print(f"Loaded all {len(self.files)} files")
+            files = [(f, s) for grp in groups.values() for f, s in grp]
 
-        # Score distribution summary
-        if self.files:
-            fma_counts = {}
-            for _, score in self.files:
-                fma_counts[int(score)] = fma_counts.get(int(score), 0) + 1
-            scores = [f[1] for f in self.files]
-            print(f"FMA range: {min(scores):.0f} - {max(scores):.0f}")
-            print(f"Unique FMA scores: {len(fma_counts)}")
+        print(f"Loading {len(files)} files (total available: {total})...")
+        motions, scores, skipped = [], [], 0
+        for i, (path, score) in enumerate(files):
+            try:
+                df = pd.read_csv(path)
+                for col in COLS:
+                    if col not in df.columns:
+                        df[col] = 0.0
+                data = df[COLS].values
+                if len(data) != SEQ_LEN:
+                    data = resample(data, SEQ_LEN)
+                motions.append(scaler.transform(data))
+                scores.append(score / 66.0)
+            except Exception:
+                skipped += 1
+            if (i + 1) % 2000 == 0:
+                print(f"  {i+1}/{len(files)} cached...", flush=True)
 
-    def __len__(self):
-        return len(self.files)
+        self.motions = torch.FloatTensor(np.array(motions))
+        self.scores  = torch.FloatTensor(np.array(scores)).unsqueeze(1)
+        print(f"  Cached {len(self.motions)} samples"
+              + (f", skipped {skipped}" if skipped else ""))
 
-    def __getitem__(self, idx):
-        path, score = self.files[idx]
+    def __len__(self):  return len(self.motions)
+    def __getitem__(self, idx): return self.motions[idx], self.scores[idx]
 
-        df = pd.read_csv(path)
-        for col in COLS:
-            if col not in df.columns:
-                df[col] = 0.0
-        data = df[COLS].values
 
-        if len(data) != self.seq_len:
-            data = resample(data, self.seq_len)
+# ── Loss ──────────────────────────────────────────────────────────────────────
 
-        data = self.scaler.transform(data)
+def _pearson(a, b):
+    if a.shape[0] < 4 or a.std() < 1e-6 or b.std() < 1e-6:
+        return torch.tensor(0.0, device=a.device)
+    a_c, b_c = a - a.mean(), b - b.mean()
+    return (a_c * b_c).sum() / (torch.norm(a_c) * torch.norm(b_c) + 1e-8)
 
-        motion_seq = torch.FloatTensor(data)
-        score_val = torch.FloatTensor([score / 66.0])
 
-        return motion_seq, score_val
+def dynamics_loss(recon_x, scores):
+    """FMA → peak velocity ↑,  FMA → jerk ↓."""
+    s  = scores.squeeze(-1)
+    wv = recon_x[:, 1:, 6:9] - recon_x[:, :-1, 6:9]
+    speed = torch.norm(wv, dim=-1)
+    peak  = speed.max(dim=1).values
+    wa    = wv[:, 1:] - wv[:, :-1]
+    wj    = wa[:, 1:] - wa[:, :-1]
+    jerk  = (wj ** 2).sum(dim=-1).sum(dim=-1)
+    path  = speed.sum(dim=1) + 1e-6
+    T     = float(recon_x.shape[1])
+    njerk = (T ** 5) / (2 * path ** 2) * jerk
+    return (1.0 - _pearson(peak, s)) + (1.0 + _pearson(njerk, s))
 
-# --- 2. MODEL (imported from shared module) ---
-from src.generation.model import SelfAttention, Encoder, Decoder, ResidualBlock, MotionCVAE
 
-# --- 3. LOSS FUNCTION (Position + Velocity + Acceleration) ---
+def compute_loss(recon_x, x, mu, logvar, scores, weights):
+    recon = nn.functional.mse_loss(recon_x, x)
 
-def loss_function(recon_x, x, mu, logvar, beta=0.1):
-    """VAE loss with reconstruction, velocity, and acceleration terms."""
+    vel_r = x[:, 1:, :]       - x[:, :-1, :]
+    vel_p = recon_x[:, 1:, :] - recon_x[:, :-1, :]
+    vel   = nn.functional.mse_loss(vel_p, vel_r)
 
-    # Reconstruction loss (position)
-    recon_loss = nn.functional.mse_loss(recon_x, x, reduction='mean')
+    acc_r = vel_r[:, 1:, :] - vel_r[:, :-1, :]
+    acc_p = vel_p[:, 1:, :] - vel_p[:, :-1, :]
+    acc   = nn.functional.mse_loss(acc_p, acc_r)
 
-    # Velocity loss (encourages smooth, realistic motion dynamics)
-    real_vel = x[:, 1:, :] - x[:, :-1, :]
-    recon_vel = recon_x[:, 1:, :] - recon_x[:, :-1, :]
-    vel_loss = nn.functional.mse_loss(recon_vel, real_vel, reduction='mean')
-
-    # Acceleration loss (even smoother motion)
-    real_acc = real_vel[:, 1:, :] - real_vel[:, :-1, :]
-    recon_acc = recon_vel[:, 1:, :] - recon_vel[:, :-1, :]
-    acc_loss = nn.functional.mse_loss(recon_acc, real_acc, reduction='mean')
-
-    # KL divergence
     kld = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
+    dyn = dynamics_loss(recon_x, scores) if weights.get('w_dyn', 0) > 0 else \
+          torch.tensor(0.0, device=x.device)
 
-    # Combined loss (weighted sum)
-    total = recon_loss + 10.0 * vel_loss + 5.0 * acc_loss + beta * kld
+    total = (recon
+             + weights.get('w_vel', 10.0) * vel
+             + weights.get('w_acc',  2.5) * acc
+             + weights.get('w_kl',   0.2) * kld
+             + weights.get('w_dyn',  2.0) * dyn)
+    return total, recon, vel, kld
 
-    return total, recon_loss, vel_loss, kld
 
-# --- 4. TRAINING LOOP ---
+# ── Scaler fitting ────────────────────────────────────────────────────────────
 
-def fit_scaler():
-    """Fit StandardScaler on all training data (sample for efficiency)."""
-    print("Fitting scaler on sampled data...")
-    all_data = []
-
-    # Sample every 50th file for scaler fitting (56k files -> ~1k samples)
-    all_files = sorted(glob.glob(os.path.join(DATA_DIR, "*.csv")))
-    sample_files = all_files[::50]
-
-    for f in sample_files:
+def fit_scaler(data_dir):
+    print("Fitting scaler...")
+    all_files = sorted(glob.glob(os.path.join(data_dir, "*.csv")))
+    step = 50 if len(all_files) > 10000 else max(1, len(all_files) // 200)
+    raw = []
+    for f in all_files[::step]:
         try:
             df = pd.read_csv(f)
             for col in COLS:
                 if col not in df.columns:
                     df[col] = 0.0
-            all_data.append(df[COLS].values)
-        except:
+            raw.append(df[COLS].values)
+        except Exception:
             pass
-
-    all_data = np.vstack(all_data)
-    print(f"Scaler fitted on {len(all_data)} samples from {len(sample_files)} files")
-
-    scaler = StandardScaler()
-    scaler.fit(all_data)
+    scaler = StandardScaler().fit(np.vstack(raw))
+    print(f"  Scaler fitted on {len(raw)} files.")
     return scaler
 
 
-def train(max_samples=None, epochs=EPOCHS, cond_drop_prob=0.1):
+# ── Training ──────────────────────────────────────────────────────────────────
+
+def train(data_source="smote", epochs=300, max_samples=15000,
+          model_config=None, loss_weights=None, learning_rate=1e-3):
+
+    model_config  = model_config  or BEST_MODEL_CONFIG
+    loss_weights  = loss_weights  or BEST_LOSS_WEIGHTS
+    data_dir      = get_path(DATA_SOURCE_PATHS[data_source])
+    models_dir    = os.path.join(get_path("output_dir").replace("output", "models"), "cvae")
+    # Resolve properly via config
+    import src.utils.config as _cfg
+    root = _cfg.get_project_root()
+    models_dir    = os.path.join(root, "models", "cvae")
+
+    best_path   = os.path.join(models_dir, "cvae_cutoff_fma_best.pth")
+    final_path  = os.path.join(models_dir, "cvae_cutoff_fma.pth")
+    scaler_path = os.path.join(models_dir, "scaler_cutoff_fma.pkl")
+    config_path = os.path.join(models_dir, "config.json")
+    os.makedirs(models_dir, exist_ok=True)
+
     print("=" * 60)
-    print("Training CVAE FMA: Direct FMA Score Targeting")
+    print(f"Training MotionCVAE  |  D_base config")
+    print(f"  Data: {data_source}  |  Device: {DEVICE}")
+    print(f"  Epochs: {epochs}  |  Max samples: {max_samples or 'ALL'}")
+    print(f"  Model: {model_config}")
+    print(f"  Losses: {loss_weights}")
     print("=" * 60)
-    print(f"Device: {DEVICE}")
-    print(f"Features: {INPUT_DIM} dims ({len(ARM_COLS)} arm + {len(TRUNK_COLS)} trunk)")
-    print(f"Architecture: BiLSTM + Self-Attention + Residual Blocks")
-    print(f"Hidden: {HIDDEN_DIM}, Latent: {LATENT_DIM}, Heads: {NUM_HEADS}")
-    print(f"Max samples: {max_samples if max_samples else 'ALL'}")
-    print(f"Epochs: {epochs}")
-    print(f"Condition dropout: {cond_drop_prob} (classifier-free guidance)")
-    print("=" * 60 + "\n")
 
-    # Fit and save scaler
-    scaler = fit_scaler()
-    os.makedirs(os.path.dirname(SCALER_SAVE_PATH), exist_ok=True)
-    joblib.dump(scaler, SCALER_SAVE_PATH)
-    print(f"Scaler saved to {SCALER_SAVE_PATH}\n")
+    # Scaler
+    if os.path.exists(scaler_path):
+        scaler = joblib.load(scaler_path)
+        print("Loaded cached scaler.")
+    else:
+        scaler = fit_scaler(data_dir)
+        joblib.dump(scaler, scaler_path)
+        print(f"  Scaler saved to {scaler_path}")
 
-    # Load dataset (FMA scores from filenames)
-    dataset = CutoffDataset(DATA_DIR, scaler, SEQ_LEN, max_samples=max_samples)
+    # Dataset
+    dataset  = MotionDataset(data_dir, scaler, max_samples)
+    train_n  = int(0.9 * len(dataset))
+    train_ds, val_ds = random_split(dataset, [train_n, len(dataset) - train_n])
 
-    train_size = int(0.9 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_data, val_data = random_split(dataset, [train_size, val_size])
+    pin = DEVICE.type == 'cuda'
+    train_loader = DataLoader(train_ds, BATCH_SIZE, shuffle=True,  num_workers=0, pin_memory=pin)
+    val_loader   = DataLoader(val_ds,   BATCH_SIZE, shuffle=False, num_workers=0, pin_memory=pin)
+    print(f"Train: {len(train_ds)}  Val: {len(val_ds)}\n")
 
-    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_data, batch_size=BATCH_SIZE, shuffle=False, num_workers=0)
+    # Model
+    model = MotionCVAE(model_config).to(DEVICE)
+    print(model.describe())
 
-    print(f"Train: {len(train_data)}, Val: {len(val_data)}\n")
+    # Persist config for generate.py
+    with open(config_path, "w") as f:
+        json.dump({"model": model_config, "losses": loss_weights,
+                   "data_source": data_source}, f, indent=2)
 
-    # Model with classifier-free guidance support
-    model = MotionCVAE(cond_drop_prob=cond_drop_prob).to(DEVICE)
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=20, factor=0.5)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=15, factor=0.5)
 
-    best_val_loss = float('inf')
-    best_model_path = MODEL_SAVE_PATH.replace('.pth', '_best.pth')
+    best_val = float('inf')
+    history  = []
 
     for epoch in range(epochs):
-        # Training
         model.train()
-        train_loss = 0
+        t_loss = 0
         for motion, score in train_loader:
-            motion = motion.to(DEVICE)
-            score = score.to(DEVICE)
-
+            motion = motion.to(DEVICE, non_blocking=True)
+            score  = score.to(DEVICE, non_blocking=True)
             optimizer.zero_grad()
             recon, mu, logvar = model(motion, score)
-            loss, _, _, _ = loss_function(recon, motion, mu, logvar)
+            loss, *_ = compute_loss(recon, motion, mu, logvar, score, loss_weights)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            train_loss += loss.item()
+            t_loss += loss.item()
+        t_loss /= len(train_loader)
 
-        train_loss /= len(train_loader)
-
-        # Validation
         model.eval()
-        val_loss = 0
+        v_loss = 0
         with torch.no_grad():
             for motion, score in val_loader:
-                motion = motion.to(DEVICE)
-                score = score.to(DEVICE)
+                motion = motion.to(DEVICE, non_blocking=True)
+                score  = score.to(DEVICE, non_blocking=True)
                 recon, mu, logvar = model(motion, score)
-                loss, _, _, _ = loss_function(recon, motion, mu, logvar)
-                val_loss += loss.item()
+                loss, *_ = compute_loss(recon, motion, mu, logvar, score, loss_weights)
+                v_loss += loss.item()
+        v_loss /= len(val_loader)
+        scheduler.step(v_loss)
 
-        val_loss /= len(val_loader)
-        scheduler.step(val_loss)
+        if v_loss < best_val:
+            best_val = v_loss
+            torch.save(model.state_dict(), best_path)
 
-        # Save best model
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), best_model_path)
+        lr = optimizer.param_groups[0]['lr']
+        history.append({"epoch": epoch + 1, "train": t_loss, "val": v_loss, "lr": lr})
 
-        if (epoch + 1) % 1 == 0:
-            lr = optimizer.param_groups[0]['lr']
-            print(f"Epoch {epoch+1:3d}/{epochs} | Train: {train_loss:.4f} | Val: {val_loss:.4f} | LR: {lr:.6f}")
+        if (epoch + 1) % 20 == 0 or epoch == 0:
+            print(f"Epoch {epoch+1:3d}/{epochs} | Train: {t_loss:.4f} | "
+                  f"Val: {v_loss:.4f} | LR: {lr:.6f}", flush=True)
 
-    # Save final model
-    torch.save(model.state_dict(), MODEL_SAVE_PATH)
-    print(f"\nModel saved to {MODEL_SAVE_PATH}")
-    print(f"Best model saved to {best_model_path}")
+    torch.save(model.state_dict(), final_path)
+    pd.DataFrame(history).to_csv(
+        os.path.join(models_dir, "training_history.csv"), index=False)
 
+    print(f"\nFinal:  {final_path}")
+    print(f"Best:   {best_path}  (val={best_val:.4f})")
+    print(f"Scaler: {scaler_path}")
+    print(f"Config: {config_path}")
+    return best_path
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train CVAE FMA model")
-    parser.add_argument("-n", "--num-samples", type=str, default="15000",
-                        help="Number of samples to train on, or 'all' for full dataset (default: 15000)")
+    parser = argparse.ArgumentParser(description="Train FMA-conditioned MotionCVAE (D_base config)")
     parser.add_argument("-e", "--epochs", type=int, default=300,
-                        help="Number of epochs (default: 300)")
-    parser.add_argument("--cond-drop", type=float, default=0.1,
-                        help="Condition dropout probability for classifier-free guidance (default: 0.1)")
+                        help="Training epochs (default: 300)")
+    parser.add_argument("-n", "--max-samples", type=str, default="15000",
+                        help="Max samples per run, or 'all' (default: 15000)")
+    parser.add_argument("--data-source", default="smote",
+                        choices=["smote", "dtw", "linear"],
+                        help="Augmentation dataset (default: smote)")
+    parser.add_argument("--lr", type=float, default=1e-3,
+                        help="Learning rate (default: 1e-3)")
     args = parser.parse_args()
 
-    # Parse num_samples
-    if args.num_samples.lower() == "all":
-        max_samples = None
-    else:
-        max_samples = int(args.num_samples)
+    max_samples = None if args.max_samples.lower() == "all" else int(args.max_samples)
 
-    train(max_samples=max_samples, epochs=args.epochs, cond_drop_prob=args.cond_drop)
+    train(data_source=args.data_source,
+          epochs=args.epochs,
+          max_samples=max_samples,
+          learning_rate=args.lr)

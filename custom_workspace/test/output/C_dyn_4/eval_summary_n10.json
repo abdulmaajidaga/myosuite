@@ -1,0 +1,9 @@
+{
+  "n_files": 51,
+  "wrist_rho": 0.915,
+  "trunk_rho": -0.886,
+  "segment_std_mean": 10.65,
+  "boundary_ratio_mean": 0.785,
+  "peak_vel_mean": 19.29,
+  "experiment": "C_dyn_4"
+}

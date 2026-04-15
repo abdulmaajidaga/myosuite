@@ -1,0 +1,6 @@
+experiment,n_files,wrist_rho,trunk_rho,segment_std_mean,boundary_ratio_mean,peak_vel_mean
+B0_smote,51,0.934,-0.868,10.64,0.794,18.04
+B1_smote,51,0.906,-0.855,10.38,0.549,18.23
+B2_smote,51,0.835,-0.903,9.86,0.654,21.16
+B3_smote,51,0.807,-0.895,10.67,0.907,22.13
+B4_smote,51,0.92,-0.93,9.14,1.024,22.65

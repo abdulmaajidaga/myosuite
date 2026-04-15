@@ -129,8 +129,13 @@ osl.log
 .claude/
 
 # Large data directories
+/data/
+/custom_workspace/data/
 /custom_workspace/data/kinematic/cutoff/augmented/
 /custom_workspace/output/
+/custom_workspace/latex/
+/latex/
+/custom_workspace/backup/models/cvae/*.pth
 /custom_workspace/models/cvae/*.pth
 /custom_workspace/models/cvae/*.pkl
 

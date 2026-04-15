@@ -16,6 +16,9 @@ paths:
   data_cutoff_processed: "data/kinematic/cutoff/processed"
   data_cutoff_original: "data/kinematic/cutoff/original"
   data_cutoff_augmented: "data/kinematic/cutoff/augmented"
+  data_cutoff_augmented_dtw: "data/kinematic/cutoff/augmented_dtw"
+  data_cutoff_augmented_smote: "data/kinematic/cutoff/augmented_smote"
+  data_cutoff_augmented_linear: "data/kinematic/cutoff/augmented_linear"
 
   # Output - originals (full frame count, real MoCap)
   output_dir: "output"
@@ -49,7 +52,7 @@ paths:
   # Script locations (for subprocess calls)
   script_csv2trc: "src/data_processing/convert_csv2trc.py"
   script_trc2mot: "src/inverse_kinematics/convert_trc2mot.py"
-  script_mot2video: "src/visualization/convert_mot2video.py"
+  script_mot2video: "scripts/viz/convert_mot2video.py"
   script_mot2invdyn: "src/inverse_dynamics/calc_mot2invdyn.py"
 
 # --- Pipeline Settings ---
@@ -59,19 +62,32 @@ pipeline:
   interactive_align: false
   scale_data: true
   lock_shoulder: true
-  locked_joint_keywords: ["shoulder", "clavicle", "scapula"]
+  locked_joint_keywords: ["shoulder1", "sternoclavicular", "acromioclavicular", "unrotscap", "unrothum", "cmc", "mp_flexion", "ip_flexion", "mcp", "pm", "md"]
+  zero_lock_keywords: ["cmc", "mp_flexion", "ip_flexion", "mcp", "pm", "md"]  # lock these at 0 (straight)
+  zero_lock_joints: ["deviation", "flexion"]  # exact joint names locked at 0 (wrist straight)
+
+  # Per-site IK weights — higher = more important
+  site_weights:
+    V_Shoulder: 5.0
+    V_Elbow: 3.0
+    V_Wrist: 2.0
+    V_Vector: 4.0
+    V_Sternum: 0.0
 
 # --- CVAE Hyperparameters ---
+# Best config: D_base (FiLM+CFG, no residual, SMOTE) — wrist_rho=0.914
 cvae:
   input_dim: 15        # 12 arm + 3 trunk
   condition_dim: 1
   hidden_dim: 256
   latent_dim: 32
-  num_heads: 4
   seq_len: 100
-  batch_size: 32
+  batch_size: 256
   learning_rate: 0.001
   epochs: 300
+  n_samples: 10        # Samples averaged per generation (eval protocol)
+
+  temporal_scaling: true   # Enable FMA-based temporal scaling in pipeline
 
   arm_cols: ['Sh_x','Sh_y','Sh_z','El_x','El_y','El_z','Wr_x','Wr_y','Wr_z','WrVec_x','WrVec_y','WrVec_z']
   trunk_cols: ['Trunk_x', 'Trunk_y', 'Trunk_z']
@@ -87,10 +103,94 @@ video:
 
 # --- Inverse Dynamics ---
 inverse_dynamics:
-  solve_joints: ['elbow_flexion', 'pro_sup', 'deviation', 'flexion']
-  shoulder_scale: 0.00001
-  target_peak_torque: 12.0
-  low_pass_cutoff: 1.5
+  # Joint groups for solving
+  shoulder_joints: ['elv_angle', 'shoulder_elv', 'shoulder_rot']
+  elbow_wrist_joints: ['elbow_flexion', 'pro_sup', 'deviation', 'flexion']
+
+  # Equality constraints are disabled at runtime (scapulohumeral rhythm
+  # constraints produce massive constraint forces that contaminate qfrc_inverse).
+  # With constraints off, raw torques are in real Nm — no calibration needed.
+
+  # External load
+  bottle_mass: 0.5
+  load_body: "lunate"
+
+  # Phase detection
+  phase_detection: true
+  phase_velocity_order: 10
+
+  # Synergy extraction
+  synergy_enabled: true
+  n_synergies: 4
+
+  # Muscle solver (static optimization with L-BFGS-B)
+  solver_weight: 10000.0           # torque-matching penalty weight
+  arm_muscle_count: 32             # muscles 0..N-1 are arm muscles (rest are fingers)
+  use_fmax_scaling: true           # scale moment arms by peak isometric force
+
+  # Solve joints: DOFs fed to the muscle solver.
+  # Includes pro_sup (important for drinking task — supination/pronation).
+  # Excludes deviation/flexion (wrist DOFs with tiny torques that add noise).
+  # Scapulohumeral rhythm is manually applied so moment arms are correct
+  # even though equality constraints are disabled for clean torques.
+  solve_joints: ['elv_angle', 'shoulder_elv', 'shoulder_rot', 'elbow_flexion', 'pro_sup']
+
+  # Output joints (all 7 still saved to torques.csv for analysis)
+  output_joints: ['elv_angle', 'shoulder_elv', 'shoulder_rot',
+                  'elbow_flexion', 'pro_sup', 'deviation', 'flexion']
+
+  # Filtering — 1.0 Hz reduces noise in generated motions
+  low_pass_cutoff: 1.0
+
+  # ATI calibration: scale activations so FMA_66 ATI matches original healthy baseline
+  ati_calibration_enabled: false
+  ati_healthy_baseline: 0.276
+
+  # Triceps Fmax boost: encourage triceps recruitment during place phase
+  triceps_fmax_boost: 1.0
+
+  # Synergy noise: FMA-scaled Gaussian noise before NNMF (motor variability)
+  synergy_noise_std: 0.0
+
+  # Output
+  generate_plots: true
+
+# --- IK Solver ---
+ik_solver:
+  # Iteration limits
+  max_iterations: 100              # per frame (increased for better convergence)
+  max_iterations_first_frame: 1000 # first frame gets more
+  convergence_threshold: 0.001     # meters (1mm)
+
+  # Adaptive damping (Levenberg-Marquardt style)
+  initial_damping: 0.01
+  damping_min: 0.001
+  damping_max: 0.5
+  damping_increase: 2.0            # multiply when stagnating
+  damping_decrease: 0.5            # multiply when improving
+  stagnation_window: 5             # iterations to detect stagnation
+
+  # Step size
+  max_step_size: 0.5               # max radians per iteration
+
+  # Target offset [x, y, z] meters — shift all IK targets in model frame
+  target_offset: [0.0, 0.0, 0.0]
+
+  # Corrective rotation [X, Y, Z] degrees (Euler XYZ) applied after alignment.
+  # Rotates targets around shoulder — Z = yaw (left/right swing of arm).
+  # Positive Z swings arm rightward (toward face for drinking task).
+  alignment_correction_deg: [0.0, 0.0, 0.0]
+
+  # Task-specific joint range overrides (radians) — tighter than model defaults
+  joint_range_overrides:
+    pro_sup: [-1.0, 1.2]           # tighter than model's [-1.571, 1.571]
+
+  # Retry logic for failed frames (only truly broken frames)
+  retry_enabled: true
+  retry_max_attempts: 3
+  error_warn_threshold: 0.030      # 30mm - report threshold
+  error_retry_threshold: 0.100     # 100mm - only retry above this
+  error_fail_threshold: 0.200      # 200mm - likely bad
 
 # --- Conda Environment ---
 conda_python: "/home/abdul/miniconda3/envs/MyoSuite/bin/python"

@@ -36,6 +36,7 @@
         <site name="LAT3_LAT3-P5" pos="-0.11157 -0.19387 0.05532"/>
         <site name="LAT3_LAT3-P6" pos="-0.07117 -0.24858 0.00907"/>
         <site class="marker" name="C7_marker" pos="-0.05613 0.05528 -0.00151"/>
+        <site name="V_Sternum" pos="0.01750 -0.18500 -0.01978" size="0.01" rgba="0 1 0 1"/>
         <site name="TMAJ_LAT_PEC_CORBhh_sphere_PECM2_2_sidesite" pos="0.0510248 -0.016092 -0.0573453" rgba="1 0 0 0"/>
     </body>
 

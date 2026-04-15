@@ -1,0 +1,8 @@
+{
+  "n_files": 51,
+  "segment_std_mean": 9.14,
+  "sag_dev_mean": 20.03,
+  "wrist_rho": 0.445,
+  "trunk_rho": -0.645,
+  "experiment": "A0_smote"
+}

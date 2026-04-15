@@ -1,0 +1,22 @@
+{
+  "experiment": "D_base",
+  "model": {
+    "use_film": true,
+    "use_cfg": true,
+    "use_residual": false,
+    "use_temporal_conv": false,
+    "latent_dim": 32
+  },
+  "losses": {
+    "w_vel": 10.0,
+    "w_acc": 2.5,
+    "w_kl": 0.2,
+    "w_dyn": 2.0
+  },
+  "data_source": "smote",
+  "metrics_n10": {
+    "wrist_rho": 0.914,
+    "trunk_rho": -0.895
+  },
+  "notes": "Best config from systematic ablation (Phases A-D in test/). Stage 2: FiLM+CFG, no residual, SMOTE data, lr=1e-3."
+}

@@ -1,0 +1,9 @@
+{
+  "n_files": 51,
+  "wrist_rho": 0.92,
+  "trunk_rho": -0.93,
+  "segment_std_mean": 9.14,
+  "boundary_ratio_mean": 1.024,
+  "peak_vel_mean": 22.65,
+  "experiment": "B4_smote"
+}

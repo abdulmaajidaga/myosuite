@@ -1,0 +1,9 @@
+{
+  "n_files": 51,
+  "wrist_rho": 0.174,
+  "trunk_rho": -0.642,
+  "segment_std_mean": 13.08,
+  "boundary_ratio_mean": 0.581,
+  "peak_vel_mean": 21.69,
+  "experiment": "D_kl_2p0"
+}

@@ -1,0 +1,15 @@
+{
+  "experiment": "B3_smote",
+  "model": {
+    "use_film": true,
+    "use_cfg": true,
+    "use_residual": false
+  },
+  "aug": "smote",
+  "losses": {
+    "w_vel": 0.0,
+    "w_acc": 5.0,
+    "w_kl": 0.1,
+    "w_dyn": 2.0
+  }
+}

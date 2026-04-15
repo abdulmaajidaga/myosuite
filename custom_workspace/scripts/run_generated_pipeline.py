@@ -21,7 +21,8 @@ import subprocess
 import numpy as np
 import pandas as pd
 
-from src.utils.config import get_path, get_project_root, load_config
+from src.utils.config import get_path, get_project_root, load_config, get
+from src.data_processing.temporal_scaling import predict_duration, apply_temporal_scaling
 
 # =============================================================================
 # PATHS (defaults, can be overridden via CLI --input-dir / --output-dir)
@@ -41,20 +42,47 @@ MARKER_MAP = {
     "V_Elbow":    ("El_x", "El_y", "El_z"),
     "V_Wrist":    ("Wr_x", "Wr_y", "Wr_z"),
     "V_Vector":   ("WrVec_x", "WrVec_y", "WrVec_z"),
+    "V_Sternum":  ("Trunk_x", "Trunk_y", "Trunk_z"),
 }
 
 # =============================================================================
 # STEP 1: Generated CSV → TRC
 # =============================================================================
+def _extract_fma_score(csv_path):
+    """Extract FMA score from filename like FMA_50.csv -> 50."""
+    basename = os.path.splitext(os.path.basename(csv_path))[0]
+    if basename.upper().startswith("FMA_"):
+        try:
+            return int(basename.split("_")[1])
+        except (IndexError, ValueError):
+            pass
+    return None
+
+
 def convert_generated_csv_to_trc(csv_path, trc_path):
     """
     Reads a CVAE-generated flat CSV and writes a proper TRC file
     compatible with convert_trc2mot.py and the MyoSuite TRCParser.
+
+    If temporal scaling is enabled and the file is an FMA_*.csv,
+    the 100-frame output is stretched to a realistic duration.
     """
     df = pd.read_csv(csv_path)
-    num_frames = len(df)
     markers = list(MARKER_MAP.keys())
     num_markers = len(markers)
+
+    # --- Temporal scaling ---
+    temporal_scaling_enabled = get("cvae", "temporal_scaling") if "temporal_scaling" in get("cvae") else False
+    fma_score = _extract_fma_score(csv_path)
+
+    if temporal_scaling_enabled and fma_score is not None:
+        target_duration = predict_duration(fma_score)
+        raw_data = df.values  # (100, 15)
+        scaled_data = apply_temporal_scaling(raw_data, target_duration, DATA_RATE)
+        df = pd.DataFrame(scaled_data, columns=df.columns)
+        print(f"  [temporal] FMA {fma_score} -> {target_duration:.2f}s ({len(df)} frames)")
+
+    num_frames = len(df)
 
     # Build the data block
     data_out = pd.DataFrame()
@@ -100,7 +128,12 @@ def run_ik(trc_path, mot_path):
 
     # Disable interactive alignment and set reference MOT for automated use
     env = os.environ.copy()
-    env["PYTHONPATH"] = WORKSPACE + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = "/home/abdul/Desktop/myosuite" + os.pathsep + WORKSPACE + os.pathsep + env.get("PYTHONPATH", "")
+    ld = env.get("LD_LIBRARY_PATH", "")
+    for lib in ["/home/abdul/.mujoco/mujoco210/bin", "/usr/lib/nvidia"]:
+        if lib not in ld:
+            ld = lib + os.pathsep + ld
+    env["LD_LIBRARY_PATH"] = ld
     env["IK_INTERACTIVE_ALIGN"] = "false"
     env["IK_REFERENCE_MOT"] = REFERENCE_MOT
 
@@ -128,7 +161,7 @@ def run_ik(trc_path, mot_path):
 # STEP 3: MOT → Video
 # =============================================================================
 def run_video(mot_path, video_path):
-    """Runs convert_mot2video.py to render the motion."""
+    """Runs convert_mot2video.py to render the basic skeleton motion."""
     script = get_path("script_mot2video")
 
     env = os.environ.copy()
@@ -147,6 +180,27 @@ def run_video(mot_path, video_path):
     return True
 
 
+def run_muscle_video(mot_path, video_path, activations_path):
+    """Render muscle activation video (blue=inactive, red=active)."""
+    script = get_path("script_mot2video")
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = WORKSPACE + os.pathsep + env.get("PYTHONPATH", "")
+
+    result = subprocess.run(
+        [CONDA_PYTHON, script, MODEL_PATH, mot_path, video_path,
+         '--activations', activations_path],
+        capture_output=True, text=True, cwd=WORKSPACE, env=env
+    )
+
+    if result.returncode != 0:
+        print(f"  [5/5] Muscle video FAILED:\n{result.stderr[-500:]}")
+        return False
+
+    print(f"  [5/5] Muscle activation video: {video_path}")
+    return True
+
+
 # =============================================================================
 # STEP 4: MOT → Inverse Dynamics
 # =============================================================================
@@ -162,14 +216,17 @@ from src.inverse_dynamics import calc_mot2invdyn
 calc_mot2invdyn.MOT_FILE_PATH = r'{mot_path}'
 calc_mot2invdyn.MODEL_XML_PATH = r'{MODEL_PATH}'
 calc_mot2invdyn.OUTPUT_DIRECTORY = r'{id_output_dir}'
-calc_mot2invdyn.GENERATE_PLOTS = True
 calc_mot2invdyn.GENERATE_VIDEO = False
 
 calc_mot2invdyn.run_inverse_dynamics()
-calc_mot2invdyn.plot_results()
 """
     env = os.environ.copy()
-    env["PYTHONPATH"] = WORKSPACE + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = "/home/abdul/Desktop/myosuite" + os.pathsep + WORKSPACE + os.pathsep + env.get("PYTHONPATH", "")
+    ld = env.get("LD_LIBRARY_PATH", "")
+    for lib in ["/home/abdul/.mujoco/mujoco210/bin", "/usr/lib/nvidia"]:
+        if lib not in ld:
+            ld = lib + os.pathsep + ld
+    env["LD_LIBRARY_PATH"] = ld
 
     result = subprocess.run(
         [CONDA_PYTHON, "-c", wrapper_code],
@@ -187,7 +244,7 @@ calc_mot2invdyn.plot_results()
 # =============================================================================
 # MAIN
 # =============================================================================
-def process_file(csv_path, output_dir, skip_id=False):
+def process_file(csv_path, output_dir, skip_id=False, skip_video=False):
     """Run the full pipeline on one flat CSV."""
     name = os.path.splitext(os.path.basename(csv_path))[0]
     print(f"\n{'='*60}")
@@ -213,11 +270,19 @@ def process_file(csv_path, output_dir, skip_id=False):
         return False
 
     # Step 3: MOT → Video
-    run_video(mot_path, video_path)
+    if not skip_video:
+        run_video(mot_path, video_path)
 
     # Step 4: MOT → Inverse Dynamics
     if not skip_id:
         run_inverse_dynamics(mot_path, id_dir)
+
+        # Step 5: Muscle activation video (blue→red coloring)
+        if not skip_video:
+            act_csv = os.path.join(id_dir, "activations.csv")
+            muscle_video = os.path.join(output_dir, "videos", f"{name}_muscles.mp4")
+            if os.path.exists(act_csv):
+                run_muscle_video(mot_path, muscle_video, act_csv)
 
     print(f"\nDone: {name}")
     return True
@@ -229,6 +294,7 @@ def main():
     parser.add_argument("--input-dir", default=None, help="Input directory of flat CSVs (default: output/generated/csv)")
     parser.add_argument("--output-dir", default=None, help="Output directory (default: output/generated)")
     parser.add_argument("--skip-id", action="store_true", help="Skip inverse dynamics step")
+    parser.add_argument("--skip-video", action="store_true", help="Skip video rendering (faster)")
     args = parser.parse_args()
 
     input_dir = args.input_dir
@@ -253,7 +319,7 @@ def main():
             if not os.path.exists(csv_path):
                 print(f"File not found: {csv_path}")
                 continue
-            process_file(csv_path, output_dir, args.skip_id)
+            process_file(csv_path, output_dir, args.skip_id, args.skip_video)
     else:
         # Process all CSVs in input dir
         csvs = sorted([f for f in os.listdir(input_dir) if f.endswith(".csv")])
@@ -262,7 +328,14 @@ def main():
             return
         print(f"Found {len(csvs)} CSV files")
         for csv_file in csvs:
-            process_file(os.path.join(input_dir, csv_file), output_dir, args.skip_id)
+            process_file(os.path.join(input_dir, csv_file), output_dir, args.skip_id, args.skip_video)
+
+    # Generate cross-FMA comparison plots (if ID was run on multiple files)
+    if not args.skip_id:
+        id_dir = os.path.join(output_dir, "id")
+        plots_dir = os.path.join(output_dir, "plots")
+        from scripts.viz.figures.plot_id_comparison import generate_all
+        generate_all(id_base_dir=id_dir, output_dir=plots_dir)
 
     print(f"\n{'='*60}")
     print("ALL DONE. Outputs in:", output_dir)

@@ -1,0 +1,225 @@
+{
+  "main": {
+    "id": "99017def7d72ce8b",
+    "type": "split",
+    "children": [
+      {
+        "id": "2f0c01941d830f9b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "9de5d3630fec86da",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "limitations.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "limitations"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "5424331276c24ed5",
+    "type": "split",
+    "children": [
+      {
+        "id": "15b21412db1cb9c1",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "8d98a329f653ef9f",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "ae03babec028abad",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "887a2200e4c6e899",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 200
+  },
+  "right": {
+    "id": "b81524f76093864e",
+    "type": "split",
+    "children": [
+      {
+        "id": "5f3363d173de3cd9",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "687822007332ff0e",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "ce50b6f17bde12be",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "a675bc30ae9989ec",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "a13c5950fbb08c43",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "9ec4173534732c5f",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false,
+      "tasknotes:Open mini calendar view": true,
+      "tasknotes:Open calendar view": false,
+      "tasknotes:Open tasks view": true,
+      "tasknotes:Open agenda view": true,
+      "tasknotes:Open kanban board": false,
+      "tasknotes:Open pomodoro timer": true,
+      "tasknotes:Open pomodoro statistics": true,
+      "tasknotes:Create new task": true
+    }
+  },
+  "active": "9de5d3630fec86da",
+  "lastOpenFiles": [
+    "directory_guide.md",
+    "dataset_stats.md",
+    "architectural_citations.md",
+    "findings_summary.md",
+    "limitations.md",
+    "litval_critique.md",
+    "model_selection_analysis.md",
+    "results_all_models.md",
+    "session_2026_04_09.md",
+    "session_2026_04_10.md",
+    "test_sandbox_debug.md",
+    "visuals_guide.md",
+    "test2_ablation_results.md",
+    "TaskNotes/Tasks/FINAL DISSERTATION.md",
+    "report/toc.md",
+    "report/to do.md",
+    "TaskNotes/Views/calendar-default.base",
+    "TaskNotes/Tasks",
+    "TaskNotes/Views/mini-calendar-default.base",
+    "TaskNotes/Views/relationships.base",
+    "TaskNotes/Views/agenda-default.base",
+    "TaskNotes/Views/tasks-default.base",
+    "TaskNotes/Views/kanban-default.base",
+    "TaskNotes/Views",
+    "TaskNotes",
+    "report",
+    "stage.md",
+    "2026-04-03_09-37.md",
+    "Tier1_Baseline_Results.md",
+    "modification.md",
+    "Welcome.md"
+  ]
+}

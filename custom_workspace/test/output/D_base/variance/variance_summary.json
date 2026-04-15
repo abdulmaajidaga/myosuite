@@ -1,0 +1,10 @@
+{
+  "n_fma_levels": 51,
+  "n_samples_per_level": 50,
+  "spearman_rho_means": 0.9957,
+  "spearman_p": 3.440146079502833e-52,
+  "mean_std_across_fma": 79.45,
+  "mean_cv_pct": 31.77,
+  "worst_cv_fma": 18,
+  "best_cv_fma": 49
+}

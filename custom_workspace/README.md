@@ -159,7 +159,7 @@ custom_workspace/
 │   ├── visualization/
 │   │   ├── convert_mot2video.py      # Render MOT to MP4 video
 │   │   ├── visualise_trc.py          # TRC marker visualization
-│   │   ├── visualise_id_results.py   # Inverse dynamics result plots
+│   │   ├── plot_id_comparison.py     # Cross-FMA inverse dynamics comparison
 │   │   ├── analyze_trunk_compensation.py
 │   │   ├── fma_trend_analysis.py     # FMA score trend plots
 │   │   ├── advanced_analysis.py      # PCA, manifold, and cluster analysis
