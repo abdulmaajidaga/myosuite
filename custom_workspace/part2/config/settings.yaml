@@ -1,0 +1,140 @@
+# =============================================================================
+# Centralized Configuration for part2 IK Pipeline
+# =============================================================================
+# All paths are relative to project root (part2/)
+
+# --- Model Paths ---
+paths:
+  mujoco_arm_model: "models/model/myo_sim/arm/myoarm_trunk.xml"
+
+  # Data directories
+  data_healthy: "data/kinematic/healthy"
+  data_stroke: "data/kinematic/stroke"
+
+  # Output - originals (uniform damping baseline)
+  output_dir: "output"
+  output_originals_trc: "output/originals/trc"
+  output_originals_mot: "output/originals/mot"
+  output_originals_videos: "output/originals/videos"
+  output_originals_id: "output/originals/id"
+
+  # Output - neutral_start (weighted IK, 3-tier damping)
+  output_neutral_trc: "output/neutral_start/trc"
+  output_neutral_mot: "output/neutral_start/mot"
+
+  # Output - other
+  output_analysis: "output/analysis"
+  output_phase_indices: "output/phase_indices"
+  output_phase_indices_stroke: "output/phase_indices/stroke_phase_indices.json"
+  output_phase_indices_healthy: "output/phase_indices/healthy_phase_indices.json"
+
+  # Reference files
+  reference_mot: "output/originals/mot/S5_12_1.mot"
+  scores_file: "output/scores.csv"
+
+  # Script locations (for subprocess calls)
+  script_csv2trc: "src/data_processing/convert_csv2trc.py"
+  script_trc2mot: "src/inverse_kinematics/ik_clean.py"
+  script_mot2invdyn: "src/inverse_dynamics/calc_mot2invdyn.py"
+
+# --- Pipeline Settings ---
+pipeline:
+  data_rate: 200.0
+  visualize_alignment: false
+  interactive_align: false
+  scale_data: true
+  lock_shoulder: true
+  locked_joint_keywords: ["shoulder1", "sternoclavicular", "acromioclavicular", "unrotscap", "unrothum", "cmc", "mp_flexion", "ip_flexion", "mcp", "pm", "md"]
+  zero_lock_keywords: ["cmc", "mp_flexion", "ip_flexion", "mcp", "pm", "md"]
+  zero_lock_joints: ["deviation", "flexion"]
+
+  # Per-site IK weights — higher = more important
+  site_weights:
+    V_Shoulder: 5.0
+    V_Elbow: 3.0
+    V_Wrist: 2.0
+    V_Vector: 4.0
+    V_Sternum: 0.0
+
+# --- Video / Rendering ---
+video:
+  camera_azimuth: 0
+  camera_distance: 2.5
+  camera_elevation: -20
+  camera_lookat: [-0.1, 0.0, 1.4]
+  width: 640
+  height: 480
+
+# --- Inverse Dynamics ---
+inverse_dynamics:
+  # Joint groups for solving
+  shoulder_joints: ['elv_angle', 'shoulder_elv', 'shoulder_rot']
+  elbow_wrist_joints: ['elbow_flexion', 'pro_sup', 'deviation', 'flexion']
+
+  # Equality constraints are disabled at runtime (scapulohumeral rhythm
+  # constraints produce massive constraint forces that contaminate qfrc_inverse).
+  # With constraints off, raw torques are in real Nm — no calibration needed.
+
+  # External load
+  bottle_mass: 0.5
+  load_body: "lunate"
+
+  # Phase detection
+  phase_detection: true
+  phase_velocity_order: 10
+
+  # Synergy extraction
+  synergy_enabled: true
+  n_synergies: 4
+
+  # Muscle solver (static optimization with L-BFGS-B)
+  solver_weight: 10000.0
+  arm_muscle_count: 32
+  use_fmax_scaling: true
+
+  # Solve joints: DOFs fed to the muscle solver.
+  # Includes pro_sup (important for drinking task — supination/pronation).
+  # Excludes deviation/flexion (wrist DOFs with tiny torques that add noise).
+  solve_joints: ['elv_angle', 'shoulder_elv', 'shoulder_rot', 'elbow_flexion', 'pro_sup']
+
+  # Output joints (all 7 still saved to torques.csv for analysis)
+  output_joints: ['elv_angle', 'shoulder_elv', 'shoulder_rot',
+                  'elbow_flexion', 'pro_sup', 'deviation', 'flexion']
+
+  # Filtering
+  low_pass_cutoff: 1.0
+
+  ati_calibration_enabled: false
+  ati_healthy_baseline: 0.276
+  triceps_fmax_boost: 1.0
+  synergy_noise_std: 0.0
+  generate_plots: true
+
+# --- IK Solver ---
+ik_solver:
+  max_iterations: 100
+  max_iterations_first_frame: 1000
+  convergence_threshold: 0.001     # metres (1mm)
+
+  initial_damping: 0.01
+  damping_min: 0.001
+  damping_max: 0.5
+  damping_increase: 2.0
+  damping_decrease: 0.5
+  stagnation_window: 5
+
+  max_step_size: 0.5               # max radians per iteration
+  target_offset: [0.0, 0.0, 0.0]
+  alignment_correction_deg: [0.0, 0.0, 0.0]
+
+  joint_range_overrides:
+    pro_sup: [-1.0, 1.2]
+
+  retry_enabled: true
+  retry_max_attempts: 3
+  error_warn_threshold: 0.030      # 30mm
+  error_retry_threshold: 0.100     # 100mm
+  error_fail_threshold: 0.200      # 200mm
+
+# --- Conda Environment ---
+conda_python: "/home/abdul/miniconda3/envs/MyoSuite/bin/python"

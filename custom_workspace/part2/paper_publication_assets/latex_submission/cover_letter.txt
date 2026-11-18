@@ -1,0 +1,12 @@
+Dear Editor,
+
+We submit for your consideration the manuscript entitled "A Two-Step Weighted Inverse Kinematics Framework to Improve Biological Validity in Kinematic Modelling of Post-Stroke Upper Limb Motion" for publication in the Journal of Biomechanics.
+
+Standard inverse kinematics (IK) applied to sparse clinical marker sets produces numerically unstable reconstructions and obscures the very compensatory movement patterns clinicians need to track in stroke rehabilitation. This manuscript introduces a Two-Step Weighted IK framework that resolves two interacting failure modes: a geometric depth mismatch in trunk tracking, addressed via Singular Value Decomposition (SVD) of chest marker orientation, and unconstrained shoulder-girdle recruitment, addressed via a biologically grounded two-tier damping hierarchy. Evaluated on 73 participants (24 stroke survivors, 49 healthy controls), the framework reduces mean reconstruction error by approximately 85% and successfully recovers established post-stroke biomarkers (compensatory trunk lean, flexor-synergy pronation, and blunted shoulder elevation) that standard solvers completely obscure.
+
+All authors have made substantial contributions to: (1) the conception and design of the study, acquisition of data, and analysis and interpretation of data; (2) drafting the article and revising it critically for important intellectual content; and (3) final approval of the version submitted. The manuscript, including all related data, figures, and tables, has not previously been published and is not under consideration elsewhere.
+
+Correspondence should be directed to Abdul Maajid Aga (abdulmaajidaga@outlook.com), Department of Engineering and Physical Sciences, Heriot-Watt University Dubai Campus, Dubai, UAE.
+
+Sincerely,
+Abdul Maajid Aga and Shawgi Mounis

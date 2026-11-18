@@ -158,3 +158,11 @@ MUJOCO_LOG.TXT
 *.swo
 *~
 Thumbs.db
+# Part 2 paper assets — override the global *.png rule so the manuscript
+# can be rebuilt from a clean checkout.
+!custom_workspace/part2/paper_publication_assets/figures_and_tables/*.png
+!custom_workspace/part2/paper_publication_assets/latex_submission/*.png
+
+# Stale local snapshot of part2 (predates the primary/secondary IK split).
+# Superseded by custom_workspace/part2 — kept on disk only, pending deletion.
+/custom_workspace/backup_part2/

@@ -332,6 +332,13 @@ EXPERIMENTS = {
         "losses": {"w_vel": 10.0, "w_acc": 2.5, "w_kl": 0.2, "w_dyn": 2.0},
         "learning_rate": 1e-3,
     },
+    "D_base_rerun": {
+        "desc": "D_base rerun with per-component logging — identical config, seed 42",
+        "model": {"use_film": True, "use_cfg": True, "use_residual": False, "latent_dim": 32},
+        "aug":   "smote",
+        "losses": {"w_vel": 10.0, "w_acc": 2.5, "w_kl": 0.2, "w_dyn": 2.0},
+        "learning_rate": 1e-3,
+    },
 
     # Latent dimension sweep
     "D_latent_16": {

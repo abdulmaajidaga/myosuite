@@ -264,6 +264,7 @@ def regen_figure():
             try:
                 df = pd.read_csv(os.path.join(ORIG_DIR, f))
                 if len(df) < 10: continue
+                df = df.subtract(df.iloc[0])   # delta, same space as augmented
                 X.append(flatten(df)); y.append(fma)
             except Exception: continue
         return np.array(X), np.array(y)
@@ -351,6 +352,10 @@ def main():
                     help='Number of healthy subjects to use (default 3)')
     ap.add_argument('--figure-only', action='store_true',
                     help='Skip generation, just rebuild the figure from existing test dirs')
+    ap.add_argument('--skip-dtw', action='store_true',
+                    help='Skip DTW generation (reuse existing augmented_dtw_test data)')
+    ap.add_argument('--dtw-only', action='store_true',
+                    help='Only run DTW generation then rebuild figure (skip linear/SMOTE)')
     args = ap.parse_args()
 
     if not args.figure_only:
@@ -375,9 +380,11 @@ def main():
             name = os.path.basename(f)[:-4]
             healthy_data[name] = to_delta(load_motion(f, RAW_HEALTHY_DIR))
 
-        gen_linear(stroke_data, healthy_data, LINEAR_TEST_DIR)
-        gen_smote (stroke_data, healthy_data, SMOTE_TEST_DIR)
-        gen_dtw   (stroke_data, healthy_data, DTW_TEST_DIR)
+        if not args.dtw_only:
+            gen_linear(stroke_data, healthy_data, LINEAR_TEST_DIR)
+            gen_smote (stroke_data, healthy_data, SMOTE_TEST_DIR)
+        if not args.skip_dtw:
+            gen_dtw(stroke_data, healthy_data, DTW_TEST_DIR)
 
     regen_figure()
 

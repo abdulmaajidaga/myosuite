@@ -1,0 +1,32 @@
+<mujoco model="MyoArm_trunk">
+<!-- MyoArm with trunk DOFs on full_body.
+     trunk_lateral_lean + trunk_forward_lean allow the entire thorax/arm
+     complex to lean, capturing trunk compensation in stroke patients.
+     sternoclavicular_r2/r3 remain free to capture shoulder girdle movement.
+-->
+
+    <include file="assets/myoarm_assets.xml"/>
+    <include file="../scene/myosuite_scene.xml"/>
+    <compiler meshdir=".." texturedir=".."/>
+
+    <asset>
+        <mesh file="../myo_sim/meshes/human_lowpoly_nohand.stl" name="human_body"/>
+    </asset>
+
+    <worldbody>
+
+        <!-- Hinge pivot at L4/L5 lumbar spine (~Z=1.00 for seated adult).
+             Joints live here so rotation is around the correct anatomical point. -->
+        <body name="trunk_base" pos="0.000 0.105 1.00">
+            <joint name="trunk_lateral_lean" type="hinge" axis="0 -1 0" range="-0.70 0.70"/>
+            <joint name="trunk_forward_lean" type="hinge" axis="1 0 0" range="-0.70 0.70"/>
+
+            <!-- full_body 0.40m above the hinge — arm stays at world Z=1.40 -->
+            <body name="full_body" pos="0 0 0.40">
+                <geom name="body" type="mesh" mesh="human_body" pos="0.000 -0.105 -1.40" euler="0 0 3.14" contype="0" conaffinity="0"/>
+                <include file="assets/myoarm_body.xml"/>
+            </body>
+        </body>
+    </worldbody>
+
+</mujoco>

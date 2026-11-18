@@ -1,0 +1,25 @@
+Title:
+A Two-Step Weighted Inverse Kinematics Framework to Improve Biological Validity in Kinematic Modelling of Post-Stroke Upper Limb Motion
+
+Authors:
+Abdul Maajid Aga(1)* and Shawgi Mounis(1)
+
+Author Details:
+
+Abdul Maajid Aga* (Corresponding Author)
+Degree: BSc in Robotics, Autonomous and Interactive Systems
+Position: Student
+Affiliation: Department of Engineering and Physical Sciences, Heriot-Watt University Dubai Campus, Dubai Knowledge Park, PO Box 501745, Dubai, United Arab Emirates
+Email: abdulmaajidaga@outlook.com
+
+Shawgi Mounis
+Degree: Doctor of Philosophy (PhD) in Mechatronics, Robotics, and Automation Engineering
+Position: Assistant Professor
+Affiliation: Department of Engineering and Physical Sciences, Heriot-Watt University Dubai Campus, Dubai Knowledge Park, PO Box 501745, Dubai, United Arab Emirates
+Email: S.Mounis@hw.ac.uk
+
+Abstract:
+Sparse optical marker sets are practical for clinical stroke assessments, but standard inverse kinematics (IK) fails on these data due to spatial mismatch and kinematic redundancy. Computational models assume fixed anatomical geometries, so mapping chest markers from patients of varying body proportions creates a moment-arm mismatch that causes Standard IK solvers to collapse numerically (mean errors >300 mm). We propose a Two-Step Weighted IK framework to resolve this. First, trunk lean is derived from the geometric orientation of chest markers via Singular Value Decomposition (SVD), yielding a rotation angle unaffected by differences in chest depth. Second, with the trunk fixed, arm kinematics are recovered using a two-tier weighted Jacobian that prioritises arm joints over the shoulder girdle. Evaluated on 24 stroke survivors with severe hemiparesis and 49 healthy controls, the pipeline stabilised the solver, reducing mean reconstruction errors by approximately 85% compared to standard models (from >300 mm down to 44.97 mm for stroke and 39.47 mm for healthy subjects). Crucially, the method recovered expected clinical biomarkers that standard solvers completely obscure: it successfully quantified compensatory trunk forward lean (4.3° stroke vs. 3.1° healthy), and accurately captured the flexor-synergy pronation gap (+7.7°) and blunted shoulder elevation (-9.1°) in alignment with established post-stroke physiological trends. Two solver-independent metrics (wrist reach distance and reach-path-ratio) confirm that these separations reflect genuine physiological impairment. The framework enables reliable extraction of pathological kinematics from standard clinical motion-capture data.
+
+Keywords:
+inverse kinematics; musculoskeletal modelling; compensatory strategies; trunk kinematics; upper extremity biomechanics

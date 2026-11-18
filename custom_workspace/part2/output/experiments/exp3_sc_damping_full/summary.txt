@@ -1,0 +1,15 @@
+SC Damping Hierarchy Validation — Full Cohort
+=======================================================
+
+Trials: 73 (24 stroke, 49 healthy)
+
+SC=0.05:
+  IK error:    44.97 ± 27.34 mm  (n=73)
+  SC_r3 peak:  0.95 ± 1.91 °  (n=73)
+
+SC=0.20:
+  IK error:    38.69 ± 21.96 mm  (n=73)
+  SC_r3 peak:  0.14 ± 0.51 °  (n=73)
+
+Wilcoxon SC_r3 (SC=0.05 vs SC=0.20): p=0.0000  n=73
+Wilcoxon IK error: p=0.0000  n=73

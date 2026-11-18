@@ -13,15 +13,44 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "limitations.md",
+                "file": "architectural_citations.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "limitations"
+              "title": "architectural_citations"
+            }
+          },
+          {
+            "id": "8aeb0ec43b7c9942",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "report/to do.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "to do"
+            }
+          },
+          {
+            "id": "caf89b4745a1249c",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "can.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "can"
             }
           }
-        ]
+        ],
+        "currentTab": 2
       }
     ],
     "direction": "vertical"
@@ -188,24 +217,31 @@
       "tasknotes:Create new task": true
     }
   },
-  "active": "9de5d3630fec86da",
+  "active": "caf89b4745a1249c",
   "lastOpenFiles": [
-    "directory_guide.md",
+    "Pasted image 20260703203549.png",
+    "can.md",
+    "report/to do.md",
     "dataset_stats.md",
     "architectural_citations.md",
-    "findings_summary.md",
+    "cite_check.md",
     "limitations.md",
     "litval_critique.md",
+    "visuals_guide.md",
+    "test_sandbox_debug.md",
+    "review.md",
+    "cite_check.md.md",
+    "cite_check.md.tmp.72902.1776288702605",
+    "cite_check.md.tmp.72902.1776279434910",
+    "directory_guide.md",
+    "findings_summary.md",
     "model_selection_analysis.md",
     "results_all_models.md",
     "session_2026_04_09.md",
     "session_2026_04_10.md",
-    "test_sandbox_debug.md",
-    "visuals_guide.md",
     "test2_ablation_results.md",
     "TaskNotes/Tasks/FINAL DISSERTATION.md",
     "report/toc.md",
-    "report/to do.md",
     "TaskNotes/Views/calendar-default.base",
     "TaskNotes/Tasks",
     "TaskNotes/Views/mini-calendar-default.base",
@@ -214,8 +250,6 @@
     "TaskNotes/Views/tasks-default.base",
     "TaskNotes/Views/kanban-default.base",
     "TaskNotes/Views",
-    "TaskNotes",
-    "report",
     "stage.md",
     "2026-04-03_09-37.md",
     "Tier1_Baseline_Results.md",

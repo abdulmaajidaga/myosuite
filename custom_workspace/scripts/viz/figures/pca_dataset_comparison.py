@@ -25,21 +25,32 @@ import sys
 import re
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
+plt.rcParams.update({
+    'font.family':        'serif',
+    'font.serif':         ['Times New Roman', 'Times', 'Liberation Serif', 'DejaVu Serif'],
+    'mathtext.fontset':   'stix',
+    'font.size':          8,
+    'axes.unicode_minus': False,
+    'axes.linewidth':     0.8,
+})
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, ROOT)
 
-# ── paths ──────────────────────────────────────────────────────────────────
+# ── paths (test datasets) ──────────────────────────────────────────────────
 PROCESSED_DIR  = os.path.join(ROOT, 'data', 'kinematic', 'cutoff', 'processed')
-SMOTE_DIR      = os.path.join(ROOT, 'data', 'kinematic', 'cutoff', 'augmented_smote')
-DTW_DIR        = os.path.join(ROOT, 'data', 'kinematic', 'cutoff', 'augmented_dtw')
-LINEAR_DIR     = os.path.join(ROOT, 'data', 'kinematic', 'cutoff', 'augmented_linear')
+SMOTE_DIR      = os.path.join(ROOT, 'data', 'kinematic', 'cutoff', 'augmented_smote_test')
+DTW_DIR        = os.path.join(ROOT, 'data', 'kinematic', 'cutoff', 'augmented_dtw_test')
+LINEAR_DIR     = os.path.join(ROOT, 'data', 'kinematic', 'cutoff', 'augmented_linear_test')
 SCORES_FILE    = os.path.join(ROOT, 'output', 'scores.csv')
-OUTPUT_PATH    = os.path.join(ROOT, 'figures', 'pca_dataset_comparison.png')
+OUTPUT_PATH    = os.path.join(ROOT, 'figures', 'pca_dataset_comparison_test.png')
 
 # ── how many augmented samples to show (per FMA level) ─────────────────────
 AUG_SAMPLES_PER_LEVEL = 20   # × 51 levels = 1020 points per panel
@@ -56,9 +67,12 @@ def load_scores():
 
 
 def flatten(df_100x15):
-    """Flatten 100×15 to 1500-d feature vector using mean + std of each channel."""
+    """Flatten 100×15 to 30-d feature vector.
+    Subtracts first frame so absolute-position and delta-form files are comparable.
+    """
     arr = df_100x15.values.astype(float)
-    return np.concatenate([arr.mean(axis=0), arr.std(axis=0)])  # 30-d summary
+    arr = arr - arr[0]   # delta from first frame
+    return np.concatenate([arr.mean(axis=0), arr.std(axis=0)])
 
 
 def load_original(scores_map):
@@ -90,7 +104,8 @@ def load_augmented(aug_dir, samples_per_level=AUG_SAMPLES_PER_LEVEL):
     """
     Load a balanced subsample from an augmented directory.
     Filenames encode FMA as:
-      smote_XXXXX_FMA{N}.csv   or   XXXXX_FMA{N}.csv
+      smote_XXXXX_FMA{N}.csv   (SMOTE)
+      FMA_{N}.csv              (DTW / linear)
     """
     fma_pattern = re.compile(r'FMA(\d+)', re.IGNORECASE)
 
@@ -191,49 +206,64 @@ def main():
     proj_linear = project(pca, scaler, X_linear)
 
     # ── figure ─────────────────────────────────────────────────────────────
-    fig = plt.figure(figsize=(12, 10))
+    fig = plt.figure(figsize=(6.30, 5.40))
+    fig.patch.set_facecolor('white')
     # leave right margin for colourbar
-    gs = fig.add_gridspec(2, 2, left=0.07, right=0.87, top=0.91, bottom=0.07,
-                          hspace=0.38, wspace=0.35)
+    gs = fig.add_gridspec(2, 2, left=0.09, right=0.86, top=0.93, bottom=0.09,
+                          hspace=0.46, wspace=0.36)
     axes = [[fig.add_subplot(gs[r, c]) for c in range(2)] for r in range(2)]
-
-    fig.suptitle('PCA Analysis (Original vs Augmented Data)',
-                 fontsize=13, fontweight='bold', y=0.97)
 
     norm = mcolors.Normalize(vmin=FMA_MIN, vmax=FMA_MAX)
 
-    panels = [
-        (axes[0][0], proj_orig,   y_orig,
-         f'(a) Original Data  [n=77]\nFMA 16–20 (stroke)  +  FMA 66 (healthy)'),
-        (axes[0][1], proj_smote,  y_smote,
-         f'(b) SMOTE Augmentation  [n={len(X_smote):,}]\nFMA 16–66 continuous'),
-        (axes[1][0], proj_dtw,    y_dtw,
-         f'(c) DTW Morphing  [n={len(X_dtw):,}]\nFMA 16–66 continuous'),
-        (axes[1][1], proj_linear, y_linear,
-         f'(d) Linear Interpolation  [n={len(X_linear):,}]\nFMA 16–66 continuous'),
+    PANEL_LABELS = ['(a)', '(b)', '(c)', '(d)']
+    SUBTITLES = [
+        'Original data',
+        'SMOTE augmentation',
+        'DTW morphing',
+        'Linear interpolation',
     ]
+    COUNTS = [len(X_orig), len(X_smote), len(X_dtw), len(X_linear)]
+    DATA   = [(proj_orig, y_orig), (proj_smote, y_smote),
+              (proj_dtw, y_dtw), (proj_linear, y_linear)]
+
+    pc1_lbl = f'PC1 ({pca.explained_variance_ratio_[0]:.1%} var.)'
+    pc2_lbl = f'PC2 ({pca.explained_variance_ratio_[1]:.1%} var.)'
 
     sc = None
-    for ax, proj, labels, title in panels:
+    for idx, ((r, c), (proj, labels), lbl, sub, n) in enumerate(
+            zip([(0,0),(0,1),(1,0),(1,1)], DATA, PANEL_LABELS, SUBTITLES, COUNTS)):
+        ax = axes[r][c]
         sc = ax.scatter(proj[:, 0], proj[:, 1],
                         c=labels, cmap=CMAP, norm=norm,
-                        s=16, alpha=0.75, linewidths=0)
-        ax.set_title(title, fontsize=9.5, fontweight='bold', pad=6, loc='left')
-        ax.set_xlabel(f'PC1 ({pca.explained_variance_ratio_[0]:.1%} var)', fontsize=8)
-        ax.set_ylabel(f'PC2 ({pca.explained_variance_ratio_[1]:.1%} var)', fontsize=8)
-        ax.tick_params(labelsize=7.5)
-        ax.spines[['top', 'right']].set_visible(False)
+                        s=10, alpha=0.65, linewidths=0, rasterized=True)
+        # panel label + subtitle
+        ax.text(-0.14, 1.06, lbl, transform=ax.transAxes,
+                fontsize=8, fontweight='bold', va='top')
+        ax.set_title(sub, fontsize=7.5, pad=3)
+        ax.text(0.97, 0.97, f'$n={n:,}$', transform=ax.transAxes,
+                fontsize=6.5, ha='right', va='top', color='#555555')
+        ax.set_xlabel(pc1_lbl, fontsize=7)
+        ax.set_ylabel(pc2_lbl, fontsize=7)
+        ax.tick_params(labelsize=6.5, length=2.5, width=0.6)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_linewidth(0.6)
+        ax.spines['bottom'].set_linewidth(0.6)
+        ax.grid(linestyle='--', alpha=0.20, linewidth=0.4)
 
     # ── shared colourbar ───────────────────────────────────────────────────
-    cbar_ax = fig.add_axes([0.89, 0.07, 0.022, 0.84])
+    cbar_ax = fig.add_axes([0.88, 0.09, 0.020, 0.84])
     cbar = fig.colorbar(sc, cax=cbar_ax)
-    cbar.set_label('FMA-UE Score', fontsize=10, labelpad=8)
+    cbar.set_label('FMA-UE score', fontsize=7.5, labelpad=6)
     cbar.set_ticks([16, 25, 35, 45, 55, 66])
-    cbar.ax.tick_params(labelsize=8.5)
+    cbar.ax.tick_params(labelsize=7, length=2.5, width=0.6)
+    cbar.outline.set_linewidth(0.6)
 
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
-    plt.savefig(OUTPUT_PATH, dpi=150, bbox_inches='tight')
-    print(f"\nSaved: {OUTPUT_PATH}")
+    for fmt in ('png', 'pdf'):
+        path = OUTPUT_PATH.replace('.png', f'.{fmt}')
+        fig.savefig(path, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"Saved: {path}")
     plt.close()
 
 

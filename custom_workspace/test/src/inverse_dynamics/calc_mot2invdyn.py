@@ -1087,6 +1087,13 @@ def run_inverse_dynamics():
 # =============================================================================
 
 if __name__ == '__main__':
+    # Optional CLI: python calc_mot2invdyn.py <input_dir_or_file> <output_root> [model_xml]
+    if len(sys.argv) >= 3:
+        INPUT_PATH = sys.argv[1]
+        OUTPUT_ROOT = sys.argv[2]
+    if len(sys.argv) >= 4:
+        MODEL_XML_PATH = sys.argv[3]
+
     if os.path.isdir(INPUT_PATH):
         files = sorted(glob.glob(os.path.join(INPUT_PATH, "*.mot")))
     else:

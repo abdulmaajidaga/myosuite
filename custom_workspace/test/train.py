@@ -210,7 +210,7 @@ def compute_loss(recon_x, x, mu, logvar, scores, weights,
              + w.get('w_acc',  5.0) * acc
              + w.get('w_kl',   0.1) * kld
              + w.get('w_dyn',  2.0) * dyn)
-    return total, recon, vel, kld
+    return total, recon, vel, acc, kld, dyn
 
 
 # ── Training loop ─────────────────────────────────────────────────────────────
@@ -315,31 +315,39 @@ def train_experiment(exp_name: str, epochs: int = DEFAULT_EPOCHS,
 
     for epoch in range(start_epoch, epochs):
         model.train()
-        t_loss = 0
+        t_loss = t_pos = t_vel = t_acc = t_kl = t_dyn = 0
         for motion, score in train_loader:
             motion = motion.to(DEVICE, non_blocking=True)
             score  = score.to(DEVICE, non_blocking=True)
             optimizer.zero_grad()
             recon, mu, logvar = model(motion, score)
-            loss, *_ = compute_loss(recon, motion, mu, logvar, score, loss_weights,
-                                    scaler_scale_t, scaler_mean_t)
+            loss, pos, vel, acc, kld, dyn = compute_loss(
+                recon, motion, mu, logvar, score, loss_weights,
+                scaler_scale_t, scaler_mean_t)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
-            t_loss += loss.item()
-        t_loss /= len(train_loader)
+            t_loss += loss.item(); t_pos += pos.item(); t_vel += vel.item()
+            t_acc  += acc.item();  t_kl  += kld.item(); t_dyn += dyn.item()
+        n_tr = len(train_loader)
+        t_loss /= n_tr; t_pos /= n_tr; t_vel /= n_tr
+        t_acc  /= n_tr; t_kl  /= n_tr; t_dyn /= n_tr
 
         model.eval()
-        v_loss = 0
+        v_loss = v_pos = v_vel = v_acc = v_kl = v_dyn = 0
         with torch.no_grad():
             for motion, score in val_loader:
                 motion = motion.to(DEVICE, non_blocking=True)
                 score  = score.to(DEVICE, non_blocking=True)
                 recon, mu, logvar = model(motion, score)
-                loss, *_ = compute_loss(recon, motion, mu, logvar, score, loss_weights,
-                                        scaler_scale_t, scaler_mean_t)
-                v_loss += loss.item()
-        v_loss /= len(val_loader)
+                loss, pos, vel, acc, kld, dyn = compute_loss(
+                    recon, motion, mu, logvar, score, loss_weights,
+                    scaler_scale_t, scaler_mean_t)
+                v_loss += loss.item(); v_pos += pos.item(); v_vel += vel.item()
+                v_acc  += acc.item();  v_kl  += kld.item(); v_dyn += dyn.item()
+        n_va = len(val_loader)
+        v_loss /= n_va; v_pos /= n_va; v_vel /= n_va
+        v_acc  /= n_va; v_kl  /= n_va; v_dyn /= n_va
         scheduler.step(v_loss)
 
         if v_loss < best_val:
@@ -347,7 +355,14 @@ def train_experiment(exp_name: str, epochs: int = DEFAULT_EPOCHS,
             torch.save(model.state_dict(), best_path)
 
         lr = optimizer.param_groups[0]['lr']
-        history.append({"epoch": epoch+1, "train": t_loss, "val": v_loss, "lr": lr})
+        history.append({
+            "epoch": epoch + 1,
+            "train": t_loss, "train_pos": t_pos, "train_vel": t_vel,
+            "train_acc": t_acc, "train_kl": t_kl, "train_dyn": t_dyn,
+            "val": v_loss, "val_pos": v_pos, "val_vel": v_vel,
+            "val_acc": v_acc, "val_kl": v_kl, "val_dyn": v_dyn,
+            "lr": lr,
+        })
 
         if (epoch + 1) % 20 == 0 or epoch == 0:
             print(f"Epoch {epoch+1:3d}/{epochs} | Train: {t_loss:.4f} | "

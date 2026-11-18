@@ -1,0 +1,13 @@
+sc_config,group,trial,ik_error_mm,sc_r3_peak_deg
+No SC hierarchy (SC=0.05),stroke,S4_12_1,67.8811,0.0
+No SC hierarchy (SC=0.05),stroke,S5_12_1,30.106,1.1136011687999998
+No SC hierarchy (SC=0.05),stroke,S11_12_1,63.6807,1.2273333318
+No SC hierarchy (SC=0.05),healthy,07_12_3,50.1849,0.4339583892
+No SC hierarchy (SC=0.05),healthy,14_12_3,39.9941,0.8157776004
+No SC hierarchy (SC=0.05),healthy,16_12_2,57.9494,8.969371011
+SC hierarchy (SC=0.20),stroke,S4_12_1,54.9093,0.0
+SC hierarchy (SC=0.20),stroke,S5_12_1,26.179,0.0
+SC hierarchy (SC=0.20),stroke,S11_12_1,53.8178,0.0
+SC hierarchy (SC=0.20),healthy,07_12_3,37.2456,0.0
+SC hierarchy (SC=0.20),healthy,14_12_3,35.6009,0.0
+SC hierarchy (SC=0.20),healthy,16_12_2,45.5761,0.0

@@ -36,7 +36,13 @@
         <site name="LAT3_LAT3-P5" pos="-0.11157 -0.19387 0.05532"/>
         <site name="LAT3_LAT3-P6" pos="-0.07117 -0.24858 0.00907"/>
         <site class="marker" name="C7_marker" pos="-0.05613 0.05528 -0.00151"/>
-        <site name="V_Sternum" pos="0.01750 -0.18500 -0.01978" size="0.01" rgba="0 1 0 1"/>
+        <site name="V_Sternum" pos="0.10500 -0.12000 0.00000" size="0.01" rgba="0 1 0 1"/>
+        <!-- CS_1–CS_4: chest cluster markers, calibrated from mean subject data.
+             Evaluated in shoulder-relative global frame (coord swap +rel[2]) in ik_clean.py. -->
+        <site name="CS_1" pos="0.0704 -0.1011 0.0209" size="0.008" rgba="0.2 0.8 0.2 1"/>
+        <site name="CS_2" pos="0.0599 -0.0748 0.0207" size="0.008" rgba="0.2 0.8 0.2 1"/>
+        <site name="CS_3" pos="0.0608 -0.0736 -0.0214" size="0.008" rgba="0.2 0.8 0.2 1"/>
+        <site name="CS_4" pos="0.0725 -0.0986 -0.0220" size="0.008" rgba="0.2 0.8 0.2 1"/>
         <site name="TMAJ_LAT_PEC_CORBhh_sphere_PECM2_2_sidesite" pos="0.0510248 -0.016092 -0.0573453" rgba="1 0 0 0"/>
     </body>
 
@@ -301,7 +307,7 @@
                                 
                                 <body name="ulna" pos="0.0061 -0.2904 -0.0123" childclass="elbow">
                                     <inertial diaginertia="0.00543663 0.00523521 0.001" mass="1.1053" pos="0.00971783 -0.0959509 0.024286" quat="0.792048 0.609078 0.0156735 0.0379256"/>
-                                    <joint axis="0.0494004 0.0366003 0.998108" name="elbow_flexion" pos="0 0 0" range="0 2.269" user="1.05676"/>
+                                    <joint axis="0.0494004 0.0366003 0.998108" name="elbow_flexion" pos="0 0 0" range="-0.2 2.6" user="1.05676"/>
                                     <geom mesh="ulna_geom_1_ulna" name="ulna_geom_1" type="mesh"/>
                                     <geom class="wrap" name="PQ2_cylinder" pos="-0.0012 -0.2092 0.0428" quat="0.540392 0.481982 -0.422482 0.545141" size="0.007 0.05" type="cylinder"/>
 
@@ -420,8 +426,8 @@
                                         <site name="V_Wrist" pos="0.018 -0.242 0.025" size="0.01" rgba="0 0 1 1"/>
 
                                         <body name="lunate" pos="0.018 -0.242 0.025" childclass="wrist">
-                                            <joint axis="0 0 1" name="deviation" pos="0 0 0" range="-0.174533 0.436332" damping="0.25"/>
-                                            <joint axis="1 0 0" name="flexion" pos="0 0 0" range="-0.785398 0.785398" damping="0.25"/>
+                                            <joint axis="0 0 1" name="deviation" pos="0 0 0" range="-0.6 0.6" damping="0.25"/>
+                                            <joint axis="1 0 0" name="flexion" pos="0 0 0" range="-1.2 1.2" damping="0.25"/>
                                             <geom mesh="lunate" name="lunate" type="mesh"/>
                                             <geom name="WristExtensor_wrap" pos="0.0007 0 0.003" quat="0.807649 -0.0333177 0.588355 0.0207694" class="wrap" size="0.008 0.02" type="cylinder"/>
                                             <geom name="WristFlexor_wrap" pos="0 -0.01 -0.004" quat="0.807649 -0.0333177 0.588355 0.0207694" class="wrap" size="0.007 0.02" type="cylinder"/>
